@@ -151,7 +151,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
           {filteredThemes.map((theme) => (
             <Card
               key={theme.id}
-              isHoverable
+              hoverable
               className={cn(
                 'group cursor-pointer overflow-hidden transition-all',
                 selectedThemeId === theme.id &&

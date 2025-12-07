@@ -228,7 +228,7 @@ export default function DashboardPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {recentProjects.map((project) => (
-              <Card key={project.id} isHoverable className="group overflow-hidden">
+              <Card key={project.id} hoverable className="group overflow-hidden">
                 {/* Thumbnail */}
                 <div className="relative aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
                   <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-500/20" />
@@ -307,7 +307,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
             {templates.map((template) => (
               <Link key={template.id} href={`/create?template=${template.id}`}>
-                <Card isHoverable className="group overflow-hidden">
+                <Card hoverable className="group overflow-hidden">
                   <div
                     className={`aspect-[5/3] bg-gradient-to-br ${template.color} flex items-center justify-center`}
                   >
