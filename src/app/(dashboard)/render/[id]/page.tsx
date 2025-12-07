@@ -220,7 +220,7 @@ export default function RenderStatusPage() {
           {/* Progress */}
           {(job.status === 'pending' || job.status === 'processing') && (
             <div className="p-6">
-              <ProgressBar value={job.progress} size="lg" showLabel />
+              <ProgressBar value={job.progress} size="lg" showValue />
               <div className="mt-4 flex justify-between text-sm text-gray-500 dark:text-gray-400">
                 <span>
                   {job.status === 'pending' ? '대기 중...' : '렌더링 중...'}

@@ -383,7 +383,7 @@ export default function CreateProjectPage() {
               </p>
 
               <div className="mx-auto mt-8 max-w-md">
-                <ProgressBar value={generationProgress} size="lg" showLabel />
+                <ProgressBar value={generationProgress} size="lg" showValue />
               </div>
 
               {isGenerating && (
