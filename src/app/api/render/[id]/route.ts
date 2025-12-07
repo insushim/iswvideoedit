@@ -93,13 +93,24 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const job = await prisma.renderJob.findFirst({
       where: {
         id: params.id,
-        project: {
-          userId: session.user.id,
-        },
       },
     });
 
     if (!job) {
+      return NextResponse.json(
+        { error: 'Render job not found' },
+        { status: 404 }
+      );
+    }
+
+    // Verify project ownership
+    const project = await prisma.project.findFirst({
+      where: {
+        id: job.projectId,
+        userId: session.user.id,
+      },
+    });
+    if (!project) {
       return NextResponse.json(
         { error: 'Render job not found' },
         { status: 404 }
