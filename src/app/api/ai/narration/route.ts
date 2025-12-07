@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Generate narration
     const narrationScript = await generateNarration({
-      projectName: project.name,
+      projectName: project.title,
       theme,
       photos: photoData,
       style: validated.style || 'emotional',
