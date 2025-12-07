@@ -85,7 +85,10 @@ export async function POST(request: NextRequest) {
       data: {
         projectId: project.id,
         status: 'pending',
-        settings: renderSettings,
+        quality: renderSettings.quality,
+        format: renderSettings.format,
+        fps: renderSettings.fps,
+        aspectRatio: renderSettings.aspectRatio,
         progress: 0,
       },
     });
