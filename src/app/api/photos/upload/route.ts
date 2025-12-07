@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { uploadToR2, generateThumbnail } from '@/lib/r2';
+import { uploadImage } from '@/lib/r2';
 import { analyzePhoto } from '@/services/photoAnalysis';
 import { randomUUID } from 'crypto';
 
@@ -84,42 +84,19 @@ export async function POST(request: NextRequest) {
         const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
         const filename = `${session.user.id}/${projectId}/${fileId}.${extension}`;
 
-        // Upload original file
-        const { url: originalUrl, key: originalKey, metadata } = await uploadToR2(
-          buffer,
-          filename,
-          file.type
-        );
-
-        // Generate and upload thumbnail
-        const thumbnailBuffer = await generateThumbnail(buffer, {
-          width: 400,
-          height: 400,
-          fit: 'cover',
-        });
-        const thumbnailFilename = `${session.user.id}/${projectId}/thumbnails/${fileId}.webp`;
-        const { url: thumbnailUrl } = await uploadToR2(
-          thumbnailBuffer,
-          thumbnailFilename,
-          'image/webp'
-        );
+        // Upload original file and generate thumbnail
+        const uploadResult = await uploadImage(buffer, filename, projectId);
 
         // Create photo record
         const photo = await prisma.photo.create({
           data: {
             projectId,
-            originalUrl,
-            thumbnailUrl,
-            filename: file.name,
-            filesize: file.size,
-            width: metadata.width,
-            height: metadata.height,
+            url: uploadResult.url,
+            originalUrl: uploadResult.url,
+            thumbnailUrl: uploadResult.thumbnailUrl,
+            width: uploadResult.width,
+            height: uploadResult.height,
             order: currentOrder++,
-            metadata: {
-              originalKey,
-              format: metadata.format,
-              hasAlpha: metadata.hasAlpha,
-            },
           },
         });
 
