@@ -6,7 +6,7 @@ interface Photo {
   originalUrl: string;
   thumbnailUrl: string;
   order: number;
-  aiAnalysis?: any;
+  analysis?: any;
 }
 
 interface Clip {

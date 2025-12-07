@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     const photoData = project.photos.map((photo) => ({
       id: photo.id,
       url: photo.originalUrl,
-      analysis: photo.aiAnalysis as any,
+      analysis: photo.analysis as any,
       order: photo.order,
     }));
 

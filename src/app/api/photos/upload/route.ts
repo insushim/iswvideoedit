@@ -199,7 +199,7 @@ export async function PUT(request: NextRequest) {
         const updatedPhoto = await prisma.photo.update({
           where: { id: photo.id },
           data: {
-            aiAnalysis: analysis,
+            analysis: JSON.parse(JSON.stringify(analysis)),
           },
         });
 

@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
 
     // Prepare photo analyses for context
     const photoAnalyses = project.photos
-      .filter((p) => p.aiAnalysis)
-      .map((p) => p.aiAnalysis as any);
+      .filter((p) => p.analysis)
+      .map((p) => p.analysis as any);
 
     // Generate unique intro/outro
     const result = await generateIntroOutro(
