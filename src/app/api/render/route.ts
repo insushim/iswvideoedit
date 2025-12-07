@@ -162,26 +162,28 @@ export async function GET(request: NextRequest) {
       where,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
     });
+
+    // Get project names separately
+    const projectIds = [...new Set(jobs.map((j) => j.projectId))];
+    const projects = await prisma.project.findMany({
+      where: { id: { in: projectIds } },
+      select: { id: true, title: true },
+    });
+    const projectMap = new Map(projects.map((p) => [p.id, p.title]));
 
     return NextResponse.json({
       jobs: jobs.map((job) => ({
         id: job.id,
         projectId: job.projectId,
-        projectName: job.project.name,
+        projectName: projectMap.get(job.projectId) || 'Unknown',
         status: job.status,
         progress: job.progress,
         outputUrl: job.outputUrl,
         error: job.error,
-        settings: job.settings,
+        quality: job.quality,
+        format: job.format,
+        fps: job.fps,
         createdAt: job.createdAt,
         completedAt: job.completedAt,
       })),
