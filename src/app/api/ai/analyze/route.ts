@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       prisma.photo.update({
         where: { id: photo.id },
         data: {
-          analysis: analyses[index] || null,
+          analysis: analyses[index] ? JSON.parse(JSON.stringify(analyses[index])) : null,
         },
       })
     );
