@@ -48,15 +48,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Get project for name
+    const projectData = await prisma.project.findUnique({
+      where: { id: job.projectId },
+      select: { title: true },
+    });
+
     return NextResponse.json({
       id: job.id,
       projectId: job.projectId,
-      projectName: job.project.name,
+      projectName: projectData?.title || 'Unknown',
       status: job.status,
       progress: job.progress,
       outputUrl: job.outputUrl,
       error: job.error,
-      settings: job.settings,
+      quality: job.quality,
+      fps: job.fps,
+      format: job.format,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       completedAt: job.completedAt,
