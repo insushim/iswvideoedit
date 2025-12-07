@@ -75,13 +75,12 @@ export async function POST(request: NextRequest) {
 
     // Generate narration
     const narrationScript = await generateNarration({
-      projectName: project.title,
+      projectTitle: project.title,
       theme,
       photos: photoData as any,
+      analyses: photoData.map((p: any) => p.analysis).filter(Boolean),
       style: (validated.style || 'emotional') as any,
       language: validated.language || 'ko',
-      includeIntro: validated.includeIntro !== false,
-      includeEnding: validated.includeEnding !== false,
     });
 
     // Update project with narration
