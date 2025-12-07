@@ -264,7 +264,7 @@ export default function EditorPage() {
                     }`}
                     onClick={() => setSelectedClipId(clip.id)}
                   >
-                    {clip.thumbnailUrl ? (
+                    {'thumbnailUrl' in clip && clip.thumbnailUrl ? (
                       <img
                         src={clip.thumbnailUrl}
                         alt=""
