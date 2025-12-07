@@ -139,7 +139,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { photoIds } = await request.json();
+    const { photoIds, projectId } = await request.json();
 
     if (!photoIds || !Array.isArray(photoIds)) {
       return NextResponse.json(
@@ -148,13 +148,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify ownership and get photos
+    // Verify ownership and get photos with project
     const photos = await prisma.photo.findMany({
       where: {
         id: { in: photoIds },
         project: {
           userId: session.user.id,
         },
+      },
+      include: {
+        project: true,
       },
     });
 
@@ -165,12 +168,17 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Import themes for analysis
+    const { themes } = await import('@/data/themes');
+    const project = photos[0].project;
+    const theme = themes.find((t) => t.id === project.themeId) || themes[0];
+
     const analyzedPhotos = [];
 
     for (const photo of photos) {
       try {
         // Analyze photo with Gemini
-        const analysis = await analyzePhoto(photo.originalUrl);
+        const analysis = await analyzePhoto(photo.originalUrl, theme);
 
         // Update photo with analysis
         const updatedPhoto = await prisma.photo.update({
