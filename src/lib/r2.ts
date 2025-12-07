@@ -173,3 +173,29 @@ export async function getSignedDownloadUrl(
 
   return getSignedUrl(s3Client, command, { expiresIn });
 }
+
+// Alias functions for backward compatibility
+export async function uploadToR2(
+  file: Buffer,
+  fileName: string,
+  projectId: string,
+  type: 'image' | 'audio' | 'video' = 'image'
+): Promise<{ url: string; key: string }> {
+  if (type === 'audio') {
+    return uploadAudio(file, fileName, projectId);
+  } else if (type === 'video') {
+    return uploadVideo(file, fileName, projectId);
+  } else {
+    const result = await uploadImage(file, fileName, projectId);
+    return { url: result.url, key: result.key };
+  }
+}
+
+export async function generateThumbnail(
+  file: Buffer,
+  fileName: string,
+  projectId: string
+): Promise<{ url: string; key: string }> {
+  const result = await uploadImage(file, fileName, projectId);
+  return { url: result.thumbnailUrl, key: result.thumbnailKey };
+}

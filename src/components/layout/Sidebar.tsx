@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   Home,
-  FolderVideo,
+  Video,
   Image,
   Palette,
   Music,
@@ -41,7 +41,7 @@ const mainNavItems: NavItem[] = [
   {
     label: '내 프로젝트',
     href: '/projects',
-    icon: <FolderVideo className="h-5 w-5" />,
+    icon: <Video className="h-5 w-5" />,
   },
   {
     label: '최근 작업',

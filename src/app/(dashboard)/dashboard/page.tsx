@@ -6,7 +6,7 @@ import { MainLayout } from '@/components/layout';
 import { Button, Card } from '@/components/common';
 import {
   Plus,
-  FolderVideo,
+  Video,
   Clock,
   Star,
   TrendingUp,
@@ -106,7 +106,7 @@ const quickStats = [
   {
     label: '전체 프로젝트',
     value: '12',
-    icon: <FolderVideo className="h-5 w-5" />,
+    icon: <Video className="h-5 w-5" />,
     color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
   },
   {

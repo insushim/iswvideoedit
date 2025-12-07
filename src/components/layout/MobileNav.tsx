@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, FolderVideo, Plus, Settings, User } from 'lucide-react';
+import { Home, Video, Plus, Settings, User } from 'lucide-react';
 
 interface NavItem {
   label: string;
@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
   {
     label: '프로젝트',
     href: '/projects',
-    icon: <FolderVideo className="h-5 w-5" />,
+    icon: <Video className="h-5 w-5" />,
   },
   {
     label: '만들기',

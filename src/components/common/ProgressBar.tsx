@@ -70,4 +70,7 @@ const Progress = React.forwardRef<
 
 Progress.displayName = ProgressPrimitive.Root.displayName;
 
-export { Progress };
+// Alias for backward compatibility
+const ProgressBar = Progress;
+
+export { Progress, ProgressBar };

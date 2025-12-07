@@ -47,3 +47,5 @@ temp/
 
 # Remotion
 remotion-dist/
+
+.vercel
