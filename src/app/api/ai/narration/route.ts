@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateNarration } from '@/services/narrationGeneration';
-import { ALL_THEMES } from '@/constants/themes';
+import { themes } from '@/data/themes';
 import { z } from 'zod';
 
 const generateNarrationSchema = z.object({
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get theme
-    const theme = ALL_THEMES.find((t) => t.id === project.themeId);
+    const theme = themes.find((t) => t.id === project.themeId);
     if (!theme) {
       return NextResponse.json(
         { error: 'Invalid theme' },

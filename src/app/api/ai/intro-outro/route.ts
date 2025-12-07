@@ -3,12 +3,15 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateIntroOutro } from '@/services/introOutroGeneration';
-import { ALL_THEMES } from '@/constants/themes';
+import { themes } from '@/data/themes';
 import { z } from 'zod';
 
 const generateIntroOutroSchema = z.object({
   projectId: z.string(),
   regenerate: z.boolean().optional(),
+  eventDate: z.string().optional(),
+  mood: z.string().optional(),
+  language: z.enum(['ko', 'en', 'ja', 'zh']).optional(),
   customPrompts: z
     .object({
       intro: z.string().optional(),
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get theme
-    const theme = ALL_THEMES.find((t) => t.id === project.themeId);
+    const theme = themes.find((t) => t.id === project.themeId);
     if (!theme) {
       return NextResponse.json(
         { error: 'Invalid theme' },
@@ -84,13 +87,25 @@ export async function POST(request: NextRequest) {
       .filter((p) => p.analysis)
       .map((p) => p.analysis as any);
 
+    // Extract main subjects from photo analyses
+    const mainSubjects = photoAnalyses
+      .flatMap((a: any) => a?.subjects || [])
+      .filter((s: string, i: number, arr: string[]) => arr.indexOf(s) === i)
+      .slice(0, 5);
+
     // Generate unique intro/outro
     const result = await generateIntroOutro(
       {
-        projectName: project.name,
+        themeId: theme.id,
+        themeName: theme.name,
+        themeCategory: theme.category,
+        projectTitle: project.title,
+        eventDate: validated.eventDate,
+        mainSubjects,
+        mood: validated.mood,
         photoCount: project.photos.length,
-        photoAnalyses,
-        customPrompts: validated.customPrompts,
+        customMessage: validated.customPrompts?.intro || validated.customPrompts?.outro,
+        language: validated.language || 'ko',
       },
       theme
     );
