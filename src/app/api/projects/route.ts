@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     const project = await prisma.project.create({
       data: {
-        name: validated.name,
+        title: validated.name,
         userId: session.user.id,
         themeId: validated.themeId || 'elegant-fade', // default theme
         status: 'draft',
