@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { analyzePhoto, analyzePhotosBatch } from '@/services/photoAnalysis';
+import { analyzePhotosBatch } from '@/services/photoAnalysis';
+import { themes } from '@/data/themes';
 
 /**
  * POST /api/ai/analyze
@@ -57,9 +58,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get theme
+    const theme = themes.find((t) => t.id === project.themeId) || themes[0];
+
+    // Prepare photos for analysis
+    const photosForAnalysis = project.photos.map((p) => ({
+      id: p.id,
+      url: p.originalUrl,
+      thumbnailUrl: p.thumbnailUrl,
+      order: p.order,
+    }));
+
     // Analyze photos
-    const photoUrls = project.photos.map((p) => p.originalUrl);
-    const analyses = await analyzePhotosBatch(photoUrls);
+    const analyses = await analyzePhotosBatch(photosForAnalysis as any, theme);
 
     // Update photos with analysis results
     const updatePromises = project.photos.map((photo, index) =>
