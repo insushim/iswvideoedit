@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       projectName: project.title,
       theme,
       photos: photoData as any,
-      style: validated.style || 'emotional',
+      style: (validated.style || 'emotional') as any,
       language: validated.language || 'ko',
       includeIntro: validated.includeIntro !== false,
       includeEnding: validated.includeEnding !== false,
