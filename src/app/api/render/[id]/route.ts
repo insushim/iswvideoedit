@@ -222,7 +222,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         where: { id: job.projectId },
         data: {
           status: 'completed',
-          outputUrl,
           updatedAt: new Date(),
         },
       });
