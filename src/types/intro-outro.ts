@@ -169,7 +169,7 @@ export interface AIIntroOutroResponse {
 export const THEME_INTRO_MAPPING: Record<string, IntroAnimationType[]> = {
   'graduation': ['cinematic', 'typewriter', 'photo-stack', 'elegant-fade'],
   'wedding': ['elegant-fade', 'particles', 'curtain', 'floating'],
-  'birthday': ['bounce', 'explosion', 'confetti', 'neon-glow'],
+  'birthday': ['bounce', 'explosion', 'particles', 'neon-glow'],
   'baby': ['floating', 'particles', 'wave', 'elegant-fade'],
   'travel': ['dynamic-zoom', 'slide-up', 'photo-stack', 'cinematic'],
   'business': ['slide-up', 'reveal', 'typewriter', 'cinematic'],

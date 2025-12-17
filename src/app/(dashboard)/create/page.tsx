@@ -239,6 +239,7 @@ export default function CreateProjectPage() {
               <PhotoUploader
                 projectId={projectId || 'temp'}
                 onPhotosUploaded={(photos) => setPhotoCount(photos.length)}
+                onProjectCreated={(id) => setProjectId(id)}
               />
             </div>
           )}

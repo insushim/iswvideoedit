@@ -5,15 +5,57 @@ import { prisma } from '@/lib/prisma';
 import { uploadImage } from '@/lib/r2';
 import { analyzePhoto } from '@/services/photoAnalysis';
 import { randomUUID } from 'crypto';
+import { cookies } from 'next/headers';
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
+// 게스트 사용자 ID 가져오기 또는 생성
+async function getOrCreateGuestUser(): Promise<string> {
+  let guestId: string;
+
+  try {
+    const cookieStore = await cookies();
+    guestId = cookieStore.get('guest_id')?.value || `guest_${randomUUID()}`;
+  } catch {
+    guestId = `guest_${randomUUID()}`;
+  }
+
+  try {
+    // upsert를 사용하여 동시성 문제 해결
+    await prisma.user.upsert({
+      where: { id: guestId },
+      update: {},
+      create: {
+        id: guestId,
+        email: `${guestId}@guest.local`,
+        name: '게스트',
+      },
+    });
+  } catch (error) {
+    console.error('Guest user upsert error:', error);
+  }
+
+  return guestId;
+}
+
+// 사용자 ID 가져오기 (로그인 또는 게스트)
+async function getUserId(): Promise<{ userId: string; isGuest: boolean }> {
+  const session = await getServerSession(authOptions);
+
+  if (session?.user?.id) {
+    return { userId: session.user.id, isGuest: false };
+  }
+
+  const guestId = await getOrCreateGuestUser();
+  return { userId: guestId, isGuest: true };
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const { userId, isGuest } = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -39,7 +81,7 @@ export async function POST(request: NextRequest) {
     const project = await prisma.project.findFirst({
       where: {
         id: projectId,
-        userId: session.user.id,
+        userId,
       },
       include: {
         _count: { select: { photos: true } },
@@ -82,7 +124,7 @@ export async function POST(request: NextRequest) {
         // Generate unique filename
         const fileId = randomUUID();
         const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-        const filename = `${session.user.id}/${projectId}/${fileId}.${extension}`;
+        const filename = `${userId}/${projectId}/${fileId}.${extension}`;
 
         // Upload original file and generate thumbnail
         const uploadResult = await uploadImage(buffer, filename, projectId);
@@ -133,9 +175,9 @@ export async function POST(request: NextRequest) {
 // Analyze photos with AI
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const { userId } = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -153,7 +195,7 @@ export async function PUT(request: NextRequest) {
       where: {
         id: { in: photoIds },
         project: {
-          userId: session.user.id,
+          userId,
         },
       },
       include: {

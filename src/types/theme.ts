@@ -14,7 +14,27 @@ export interface ThemeFonts {
 }
 
 export interface ThemeIntroStyle {
-  type: 'fade-zoom' | 'slide-up' | 'particles' | 'typewriter' | 'cinematic' | 'bounce' | 'split' | 'reveal' | 'glitch' | 'wave';
+  type:
+    | 'fade-zoom'
+    | 'slide-up'
+    | 'particles'
+    | 'typewriter'
+    | 'cinematic'
+    | 'bounce'
+    | 'split'
+    | 'reveal'
+    | 'glitch'
+    | 'wave'
+    | 'spiral'
+    | 'explosion'
+    | 'elegant-fade'
+    | 'dynamic-zoom'
+    | 'floating'
+    | 'neon-glow'
+    | 'handwriting'
+    | 'photo-stack'
+    | 'curtain'
+    | 'puzzle';
   duration: number;
   elements: ('title' | 'subtitle' | 'date' | 'logo' | 'particles' | 'gradient-bg')[];
   animation: {
@@ -25,9 +45,29 @@ export interface ThemeIntroStyle {
 }
 
 export interface ThemeOutroStyle {
-  type: 'fade-out' | 'zoom-out' | 'scroll-credits' | 'photo-collage' | 'heart-gather' | 'fireworks' | 'thank-you' | 'memories' | 'flying-photos' | 'mosaic';
+  type:
+    | 'fade-out'
+    | 'zoom-out'
+    | 'scroll-credits'
+    | 'photo-collage'
+    | 'heart-gather'
+    | 'fireworks'
+    | 'thank-you'
+    | 'memories'
+    | 'flying-photos'
+    | 'mosaic'
+    | 'polaroid-stack'
+    | 'ribbon'
+    | 'confetti'
+    | 'sunset'
+    | 'book-close'
+    | 'timeline'
+    | 'balloon'
+    | 'flower-bloom'
+    | 'wave-goodbye'
+    | 'film-reel';
   duration: number;
-  elements: ('message' | 'credits' | 'photos' | 'logo' | 'social' | 'qr-code')[];
+  elements: ('message' | 'credits' | 'photos' | 'logo' | 'social' | 'qr-code' | 'qrCode')[];
   animation: {
     messageDelay: number;
     photosDelay: number;
@@ -61,6 +101,13 @@ export interface Theme {
   outroStyles: ThemeOutroStyle[];
   introPrompts: string[];
   outroPrompts: string[];
+  // API 응답에서 사용되는 추가 속성들
+  transitions?: string[];
+  effects?: string[];
+  musicGenres?: string[];
+  thumbnail?: string;
+  isPremium?: boolean;
+  keywords?: string[];
 }
 
 export interface ThemeCategory {

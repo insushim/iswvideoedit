@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get project names separately
-    const projectIds = [...new Set(jobs.map((j) => j.projectId))];
+    const projectIds = Array.from(new Set(jobs.map((j) => j.projectId)));
     const projects = await prisma.project.findMany({
       where: { id: { in: projectIds } },
       select: { id: true, title: true },

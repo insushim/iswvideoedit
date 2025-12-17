@@ -32,18 +32,49 @@ interface UploadedPhoto {
 interface PhotoUploaderProps {
   projectId: string;
   onPhotosUploaded?: (photos: UploadedPhoto[]) => void;
+  onProjectCreated?: (projectId: string) => void;
   maxFiles?: number;
   maxSizePerFile?: number; // in bytes
 }
 
 export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
-  projectId,
+  projectId: initialProjectId,
   onPhotosUploaded,
+  onProjectCreated,
   maxFiles = 100,
   maxSizePerFile = 20 * 1024 * 1024, // 20MB
 }) => {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string>(initialProjectId);
+
+  // 프로젝트 생성 (임시 프로젝트인 경우)
+  const ensureProject = async (): Promise<string | null> => {
+    if (currentProjectId && currentProjectId !== 'temp') {
+      return currentProjectId;
+    }
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: '새 프로젝트',
+          themeId: 'elegant-fade',
+        }),
+      });
+
+      if (response.ok) {
+        const project = await response.json();
+        setCurrentProjectId(project.id);
+        onProjectCreated?.(project.id);
+        return project.id;
+      }
+    } catch (error) {
+      console.error('Failed to create project:', error);
+    }
+    return null;
+  };
 
   const onDrop = useCallback(
     async (acceptedFiles: File[], rejectedFiles: any[]) => {
@@ -54,6 +85,13 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
 
       if (photos.length + acceptedFiles.length > maxFiles) {
         alert(`최대 ${maxFiles}장까지 업로드할 수 있습니다.`);
+        return;
+      }
+
+      // 프로젝트 확인/생성
+      const projectId = await ensureProject();
+      if (!projectId) {
+        alert('프로젝트 생성에 실패했습니다. 다시 시도해주세요.');
         return;
       }
 
@@ -144,7 +182,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
         setIsUploading(false);
       }
     },
-    [projectId, photos, maxFiles, onPhotosUploaded]
+    [currentProjectId, photos, maxFiles, onPhotosUploaded, ensureProject]
   );
 
   const analyzePhotos = async (photoIds: string[]) => {
@@ -152,7 +190,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       const response = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, photoIds }),
+        body: JSON.stringify({ projectId: currentProjectId, photoIds }),
       });
 
       if (response.ok) {

@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         (theme) =>
           theme.name.toLowerCase().includes(searchLower) ||
           theme.description.toLowerCase().includes(searchLower) ||
-          theme.keywords.some((k) => k.toLowerCase().includes(searchLower))
+          theme.tags.some((k: string) => k.toLowerCase().includes(searchLower))
       );
     }
 
@@ -49,9 +49,9 @@ export async function GET(request: NextRequest) {
       description: theme.description,
       category: theme.category,
       colors: theme.colors,
-      thumbnail: theme.thumbnail,
-      isPremium: theme.isPremium,
-      keywords: theme.keywords,
+      thumbnail: theme.icon,
+      isPremium: theme.premium,
+      keywords: theme.tags,
     }));
 
     return NextResponse.json({

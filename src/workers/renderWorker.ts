@@ -125,7 +125,8 @@ async function processRenderJob(job: Job<RenderJobData>) {
       where: { id: projectId },
       data: {
         status: 'completed',
-        outputUrl,
+        exportUrl: outputUrl,
+        exportedAt: new Date(),
         updatedAt: new Date(),
       },
     });

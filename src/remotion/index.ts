@@ -1,4 +1,4 @@
 import { registerRoot } from 'remotion';
-import { PhotoStory } from './compositions/PhotoStory';
+import { RemotionRoot } from './Root';
 
-registerRoot(PhotoStory);
+registerRoot(RemotionRoot);
