@@ -19,37 +19,16 @@ async function getOrCreateGuestUser(): Promise<string> {
     guestId = `guest_${randomUUID()}`;
   }
 
-  try {
-    // 먼저 사용자가 존재하는지 확인
-    const existingUser = await prisma.user.findUnique({
-      where: { id: guestId },
-    });
-
-    if (!existingUser) {
-      // 사용자가 없을 때만 생성 시도
-      try {
-        await prisma.user.create({
-          data: {
-            id: guestId,
-            email: `${guestId}@guest.local`,
-            name: '게스트',
-          },
-        });
-      } catch (createError) {
-        // 중복 오류는 무시 (다른 요청에서 이미 생성됨)
-        if (
-          createError instanceof Prisma.PrismaClientKnownRequestError &&
-          createError.code === 'P2002'
-        ) {
-          // 이미 존재하는 경우 무시
-        } else {
-          throw createError;
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Guest user creation error:', error);
-  }
+  // 사용자 생성/확인 - upsert 사용
+  await prisma.user.upsert({
+    where: { id: guestId },
+    update: {}, // 이미 존재하면 아무것도 하지 않음
+    create: {
+      id: guestId,
+      email: `${guestId}@guest.local`,
+      name: '게스트',
+    },
+  });
 
   return guestId;
 }
