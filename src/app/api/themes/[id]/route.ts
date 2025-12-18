@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ALL_THEMES } from '@/constants/themes';
 
-interface RouteParams {
-  params: { id: string };
-}
-
 /**
  * GET /api/themes/[id]
  * Get a specific theme with full details
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const theme = ALL_THEMES.find((t) => t.id === params.id);
+    const { id } = await params;
+    const theme = ALL_THEMES.find((t) => t.id === id);
 
     if (!theme) {
       return NextResponse.json(

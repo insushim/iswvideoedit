@@ -357,7 +357,7 @@ export default function HomePage() {
                   ))}
                 </div>
                 <p className="mb-6 text-gray-700 dark:text-gray-300">
-                  "{testimonial.content}"
+                  &ldquo;{testimonial.content}&rdquo;
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500" />

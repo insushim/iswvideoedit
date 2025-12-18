@@ -97,8 +97,8 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
             {/* Testimonial */}
             <div className="mt-12 rounded-2xl bg-white/10 p-6 backdrop-blur-sm">
               <p className="italic text-white/90">
-                "딸의 돌잔치 영상을 만들었는데, 가족들 모두 눈물을 흘렸어요.
-                정말 감동적이었습니다."
+                &ldquo;딸의 돌잔치 영상을 만들었는데, 가족들 모두 눈물을 흘렸어요.
+                정말 감동적이었습니다.&rdquo;
               </p>
               <div className="mt-4 flex items-center justify-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-white/20" />

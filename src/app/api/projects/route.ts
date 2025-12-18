@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 
 // 게스트 사용자 ID 가져오기 또는 생성
 async function getOrCreateGuestUser(): Promise<string> {
@@ -19,30 +20,50 @@ async function getOrCreateGuestUser(): Promise<string> {
   }
 
   try {
-    // upsert를 사용하여 동시성 문제 해결
-    await prisma.user.upsert({
+    // 먼저 사용자가 존재하는지 확인
+    const existingUser = await prisma.user.findUnique({
       where: { id: guestId },
-      update: {}, // 이미 존재하면 아무것도 업데이트하지 않음
-      create: {
-        id: guestId,
-        email: `${guestId}@guest.local`,
-        name: '게스트',
-      },
     });
+
+    if (!existingUser) {
+      // 사용자가 없을 때만 생성 시도
+      try {
+        await prisma.user.create({
+          data: {
+            id: guestId,
+            email: `${guestId}@guest.local`,
+            name: '게스트',
+          },
+        });
+      } catch (createError) {
+        // 중복 오류는 무시 (다른 요청에서 이미 생성됨)
+        if (
+          createError instanceof Prisma.PrismaClientKnownRequestError &&
+          createError.code === 'P2002'
+        ) {
+          // 이미 존재하는 경우 무시
+        } else {
+          throw createError;
+        }
+      }
+    }
   } catch (error) {
-    // upsert도 실패하면 로그만 남기고 계속 진행
-    console.error('Guest user upsert error:', error);
+    console.error('Guest user creation error:', error);
   }
 
   return guestId;
 }
 
 // 사용자 ID 가져오기 (로그인 또는 게스트)
-async function getUserId(request: NextRequest): Promise<{ userId: string; isGuest: boolean }> {
-  const session = await getServerSession(authOptions);
+async function getUserId(): Promise<{ userId: string; isGuest: boolean }> {
+  try {
+    const session = await getServerSession(authOptions);
 
-  if (session?.user?.id) {
-    return { userId: session.user.id, isGuest: false };
+    if (session?.user?.id) {
+      return { userId: session.user.id, isGuest: false };
+    }
+  } catch (error) {
+    console.error('Session fetch error:', error);
   }
 
   const guestId = await getOrCreateGuestUser();
@@ -52,7 +73,7 @@ async function getUserId(request: NextRequest): Promise<{ userId: string; isGues
 // GET /api/projects - Get all projects for authenticated user
 export async function GET(request: NextRequest) {
   try {
-    const { userId, isGuest } = await getUserId(request);
+    const { userId } = await getUserId();
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -125,31 +146,53 @@ const createProjectSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, isGuest } = await getUserId(request);
+    const { userId, isGuest } = await getUserId();
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const validated = createProjectSchema.parse(body);
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: '요청 본문이 올바르지 않습니다' },
+        { status: 400 }
+      );
+    }
+
+    const result = createProjectSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Validation error', details: result.error.errors },
+        { status: 400 }
+      );
+    }
+
+    const validated = result.data;
+
+    // 기본 설정값
+    const defaultSettings = {
+      aspectRatio: '16:9',
+      fps: 30,
+      resolution: '1080p',
+    };
 
     const project = await prisma.project.create({
       data: {
         title: validated.name,
         userId,
-        themeId: validated.themeId || 'elegant-fade', // default theme
+        themeId: validated.themeId || 'elegant-fade',
         status: 'draft',
-        settings: validated.settings || {
-          aspectRatio: '16:9',
-          fps: 30,
-          resolution: '1080p',
-        },
-        timeline: [],
-        audio: {},
-        narration: {},
-        introConfig: {},
-        outroConfig: {},
+        settings: validated.settings
+          ? { ...defaultSettings, ...validated.settings }
+          : defaultSettings,
+        timeline: Prisma.JsonNull,
+        audio: Prisma.JsonNull,
+        narration: Prisma.JsonNull,
+        introConfig: Prisma.JsonNull,
+        outroConfig: Prisma.JsonNull,
       },
     });
 
@@ -168,16 +211,40 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    if (error instanceof z.ZodError) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('Error creating project:', {
+      message: errorMessage,
+      stack: errorStack,
+      error,
+    });
+
+    // Prisma 관련 에러 처리
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        return NextResponse.json(
+          { error: '중복된 데이터가 있습니다' },
+          { status: 409 }
+        );
+      }
+      if (error.code === 'P2003') {
+        return NextResponse.json(
+          { error: '참조하는 데이터가 존재하지 않습니다' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 데이터베이스 연결 오류
+    if (error instanceof Prisma.PrismaClientInitializationError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
-        { status: 400 }
+        { error: '데이터베이스 연결 오류가 발생했습니다' },
+        { status: 503 }
       );
     }
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Error creating project:', errorMessage, error);
+
     return NextResponse.json(
-      { error: 'Failed to create project', details: errorMessage },
+      { error: '프로젝트 생성에 실패했습니다', details: errorMessage },
       { status: 500 }
     );
   }

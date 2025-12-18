@@ -3,24 +3,50 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { cookies } from 'next/headers';
 
-interface RouteParams {
-  params: { id: string };
+// 사용자 ID 가져오기 (로그인 또는 게스트)
+async function getUserId(): Promise<string | null> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      return session.user.id;
+    }
+  } catch (error) {
+    console.error('Session fetch error:', error);
+  }
+
+  // 게스트 ID 확인
+  try {
+    const cookieStore = await cookies();
+    const guestId = cookieStore.get('guest_id')?.value;
+    if (guestId) {
+      return guestId;
+    }
+  } catch {
+    // cookies() 실패 시 무시
+  }
+
+  return null;
 }
 
 // GET /api/projects/[id] - Get a specific project
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const session = await getServerSession(authOptions);
+    const { id } = await params;
+    const userId = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const project = await prisma.project.findFirst({
       where: {
-        id: params.id,
-        userId: session.user.id,
+        id,
+        userId,
       },
       include: {
         photos: {
@@ -46,8 +72,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PATCH /api/projects/[id] - Update a project
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
+  title: z.string().min(1).max(100).optional(),
   themeId: z.string().optional(),
-  status: z.enum(['draft', 'processing', 'completed', 'failed']).optional(),
+  status: z.enum(['draft', 'editing', 'rendering', 'completed', 'failed']).optional(),
   settings: z.record(z.any()).optional(),
   timeline: z.array(z.any()).optional(),
   audio: z.record(z.any()).optional(),
@@ -57,19 +84,23 @@ const updateProjectSchema = z.object({
   duration: z.number().optional(),
 });
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const session = await getServerSession(authOptions);
+    const { id } = await params;
+    const userId = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Verify ownership
     const existingProject = await prisma.project.findFirst({
       where: {
-        id: params.id,
-        userId: session.user.id,
+        id,
+        userId,
       },
     });
 
@@ -77,13 +108,37 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const body = await request.json();
-    const validated = updateProjectSchema.parse(body);
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: '요청 본문이 올바르지 않습니다' },
+        { status: 400 }
+      );
+    }
+
+    const result = updateProjectSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Validation error', details: result.error.errors },
+        { status: 400 }
+      );
+    }
+
+    const validated = result.data;
+
+    // name을 title로 변환 (하위 호환성)
+    const updateData: Record<string, unknown> = { ...validated };
+    if (validated.name && !validated.title) {
+      updateData.title = validated.name;
+    }
+    delete updateData.name;
 
     const project = await prisma.project.update({
-      where: { id: params.id },
+      where: { id },
       data: {
-        ...validated,
+        ...updateData,
         updatedAt: new Date(),
       },
     });
@@ -105,19 +160,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 }
 
 // DELETE /api/projects/[id] - Delete a project
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const session = await getServerSession(authOptions);
+    const { id } = await params;
+    const userId = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Verify ownership
     const existingProject = await prisma.project.findFirst({
       where: {
-        id: params.id,
-        userId: session.user.id,
+        id,
+        userId,
       },
     });
 
@@ -125,14 +184,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Delete associated photos first
+    // Delete associated photos first (Cascade로 자동 삭제되지만 명시적으로)
     await prisma.photo.deleteMany({
-      where: { projectId: params.id },
+      where: { projectId: id },
     });
 
     // Delete the project
     await prisma.project.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json({ success: true });

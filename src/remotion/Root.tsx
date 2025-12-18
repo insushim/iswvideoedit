@@ -4,8 +4,7 @@ import { PhotoStory } from './compositions/PhotoStory';
 import { Project } from '@/types/project';
 import { Theme } from '@/types/theme';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const PhotoStoryWrapper = PhotoStory as React.FC<any>;
+const PhotoStoryWrapper = PhotoStory as React.FC<{ project: Project; theme: Theme }>;
 
 export const RemotionRoot: React.FC = () => {
   return (

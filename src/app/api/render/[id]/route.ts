@@ -2,26 +2,52 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { cookies } from 'next/headers';
 
-interface RouteParams {
-  params: { id: string };
+// 사용자 ID 가져오기 (로그인 또는 게스트)
+async function getUserId(): Promise<string | null> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      return session.user.id;
+    }
+  } catch (error) {
+    console.error('Session fetch error:', error);
+  }
+
+  // 게스트 ID 확인
+  try {
+    const cookieStore = await cookies();
+    const guestId = cookieStore.get('guest_id')?.value;
+    if (guestId) {
+      return guestId;
+    }
+  } catch {
+    // cookies() 실패 시 무시
+  }
+
+  return null;
 }
 
 /**
  * GET /api/render/[id]
  * Get status of a specific render job
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const session = await getServerSession(authOptions);
+    const { id } = await params;
+    const userId = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const job = await prisma.renderJob.findFirst({
       where: {
-        id: params.id,
+        id,
       },
     });
 
@@ -30,7 +56,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const project = await prisma.project.findFirst({
         where: {
           id: job.projectId,
-          userId: session.user.id,
+          userId,
         },
       });
       if (!project) {
@@ -82,17 +108,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/render/[id]
  * Cancel a render job (if pending or processing)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const session = await getServerSession(authOptions);
+    const { id } = await params;
+    const userId = await getUserId();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const job = await prisma.renderJob.findFirst({
       where: {
-        id: params.id,
+        id,
       },
     });
 
@@ -107,7 +137,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const project = await prisma.project.findFirst({
       where: {
         id: job.projectId,
-        userId: session.user.id,
+        userId,
       },
     });
     if (!project) {
@@ -126,7 +156,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // Update job status to cancelled
     await prisma.renderJob.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status: 'failed',
         error: 'Cancelled by user',
@@ -162,8 +192,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
  * PATCH /api/render/[id]
  * Update render job status (internal use)
  */
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params;
     // This endpoint should be protected by an internal API key in production
     const apiKey = request.headers.get('x-api-key');
     const internalKey = process.env.INTERNAL_API_KEY;
@@ -175,7 +209,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { status, progress, outputUrl, error } = await request.json();
 
     const job = await prisma.renderJob.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!job) {
@@ -185,7 +219,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (status) {
       updateData.status = status;
@@ -212,7 +246,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const updatedJob = await prisma.renderJob.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
     });
 

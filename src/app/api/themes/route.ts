@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ALL_THEMES, EDUCATION_THEMES, FAMILY_THEMES, BUSINESS_THEMES, EVENT_THEMES } from '@/constants/themes';
 
+// 동적 렌더링 강제
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/themes
  * Get available themes

@@ -4,23 +4,33 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
 import bcrypt from 'bcryptjs';
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-    CredentialsProvider({
-      name: 'credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('이메일과 비밀번호를 입력해주세요.');
-        }
+// 조건부 Provider 설정
+const providers: NextAuthOptions['providers'] = [];
 
+// Google OAuth (환경변수가 있을 때만)
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    })
+  );
+}
+
+// Credentials Provider (항상 활성화)
+providers.push(
+  CredentialsProvider({
+    name: 'credentials',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      password: { label: 'Password', type: 'password' },
+    },
+    async authorize(credentials) {
+      if (!credentials?.email || !credentials?.password) {
+        throw new Error('이메일과 비밀번호를 입력해주세요.');
+      }
+
+      try {
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
@@ -44,32 +54,49 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           image: user.image,
         };
-      },
-    }),
-  ],
+      } catch (error) {
+        console.error('Authorize error:', error);
+        throw new Error('인증 처리 중 오류가 발생했습니다.');
+      }
+    },
+  })
+);
+
+export const authOptions: NextAuthOptions = {
+  providers,
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === 'google') {
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-        });
+        try {
+          if (!user.email) {
+            console.error('Google sign in: email is missing');
+            return false;
+          }
 
-        if (!existingUser) {
-          await prisma.user.create({
-            data: {
-              email: user.email!,
-              name: user.name,
-              image: user.image,
-              provider: 'google',
-              providerId: account.providerAccountId,
-              subscription: {
-                create: {
-                  plan: 'free',
-                  status: 'active',
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email },
+          });
+
+          if (!existingUser) {
+            await prisma.user.create({
+              data: {
+                email: user.email,
+                name: user.name,
+                image: user.image,
+                provider: 'google',
+                providerId: account.providerAccountId,
+                subscription: {
+                  create: {
+                    plan: 'free',
+                    status: 'active',
+                  },
                 },
               },
-            },
-          });
+            });
+          }
+        } catch (error) {
+          console.error('Google sign in error:', error);
+          return false;
         }
       }
       return true;
