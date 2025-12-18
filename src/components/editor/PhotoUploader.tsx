@@ -58,6 +58,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: '새 프로젝트',
           themeId: 'elegant-fade',
@@ -117,6 +118,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
 
         const response = await fetch('/api/photos/upload', {
           method: 'POST',
+          credentials: 'include',
           body: formData,
         });
 
@@ -190,6 +192,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       const response = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ projectId: currentProjectId, photoIds }),
       });
 

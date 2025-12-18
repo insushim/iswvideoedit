@@ -58,6 +58,7 @@ export default function CreateProjectPage() {
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: settings.name || '새 프로젝트',
           themeId: selectedThemeId,
@@ -115,6 +116,7 @@ export default function CreateProjectPage() {
       await fetch('/api/ai/intro-outro', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ projectId }),
       });
 
@@ -124,6 +126,7 @@ export default function CreateProjectPage() {
         await fetch('/api/ai/narration', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             projectId,
             style: 'emotional',
@@ -137,6 +140,7 @@ export default function CreateProjectPage() {
       await fetch(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           name: settings.name || '새 프로젝트',
           themeId: selectedThemeId,

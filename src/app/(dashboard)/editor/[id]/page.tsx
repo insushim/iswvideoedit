@@ -107,7 +107,9 @@ export default function EditorPage() {
   useEffect(() => {
     const fetchProject = async () => {
       try {
-        const response = await fetch(`/api/projects/${projectId}`);
+        const response = await fetch(`/api/projects/${projectId}`, {
+          credentials: 'include',
+        });
         if (response.ok) {
           const data = await response.json();
           setProject(data);
@@ -150,6 +152,7 @@ export default function EditorPage() {
       await fetch(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           timeline: clips,
         }),
@@ -167,6 +170,7 @@ export default function EditorPage() {
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           projectId,
           settings: {

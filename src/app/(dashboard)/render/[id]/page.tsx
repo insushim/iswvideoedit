@@ -54,7 +54,9 @@ export default function RenderStatusPage() {
 
   const fetchJobStatus = async () => {
     try {
-      const response = await fetch(`/api/render/${jobId}`);
+      const response = await fetch(`/api/render/${jobId}`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setJob(data);
@@ -80,6 +82,7 @@ export default function RenderStatusPage() {
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           projectId: job.projectId,
           settings: job.settings,
@@ -101,6 +104,7 @@ export default function RenderStatusPage() {
     try {
       await fetch(`/api/render/${jobId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
       router.push(`/editor/${job.projectId}`);
     } catch (error) {

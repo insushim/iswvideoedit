@@ -77,7 +77,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify project ownership
+    // 먼저 프로젝트가 존재하는지 확인
+    const projectExists = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, userId: true },
+    });
+
+    if (!projectExists) {
+      return NextResponse.json(
+        { error: 'Project not found', projectId },
+        { status: 404 }
+      );
+    }
+
+    // 프로젝트 소유자가 다르면 소유권 이전 (게스트 사용자 간 이동 허용)
+    if (projectExists.userId !== userId) {
+      // 게스트 사용자인 경우 프로젝트 소유권 업데이트
+      if (isGuest && projectExists.userId.startsWith('guest_')) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { userId },
+        });
+      } else {
+        return NextResponse.json(
+          { error: 'Access denied', yourUserId: userId, projectUserId: projectExists.userId },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 프로젝트 조회
     const project = await prisma.project.findFirst({
       where: {
         id: projectId,
@@ -90,8 +119,8 @@ export async function POST(request: NextRequest) {
 
     if (!project) {
       return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
+        { error: 'Project access failed after ownership check' },
+        { status: 500 }
       );
     }
 
