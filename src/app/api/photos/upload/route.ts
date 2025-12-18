@@ -6,6 +6,23 @@ import { randomUUID } from 'crypto';
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
+// CORS 헤더 추가 함수
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+  };
+}
+
+// OPTIONS 요청 처리 (CORS preflight)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders(),
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -15,14 +32,14 @@ export async function POST(request: NextRequest) {
     if (!projectId) {
       return NextResponse.json(
         { error: 'Project ID is required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders() }
       );
     }
 
     if (files.length === 0) {
       return NextResponse.json(
         { error: 'No files provided' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders() }
       );
     }
 
@@ -37,7 +54,7 @@ export async function POST(request: NextRequest) {
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found', projectId },
-        { status: 404 }
+        { status: 404, headers: corsHeaders() }
       );
     }
 
@@ -108,12 +125,12 @@ export async function POST(request: NextRequest) {
       uploaded: uploadedPhotos,
       errors: errors.length > 0 ? errors : undefined,
       total: uploadedPhotos.length,
-    });
+    }, { headers: corsHeaders() });
   } catch (error) {
     console.error('Error in photo upload:', error);
     return NextResponse.json(
       { error: 'Failed to upload photos' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders() }
     );
   }
 }
