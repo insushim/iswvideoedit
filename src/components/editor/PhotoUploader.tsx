@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { cn } from '@/lib/utils';
 import { Button, ProgressBar } from '@/components/common';
+import { processImage, uploadToPresignedUrl } from '@/lib/imageProcessor';
 import {
   Upload,
   Image,
@@ -19,7 +20,7 @@ interface UploadedPhoto {
   id: string;
   file?: File;
   preview: string;
-  status: 'uploading' | 'analyzing' | 'complete' | 'error';
+  status: 'processing' | 'uploading' | 'analyzing' | 'complete' | 'error';
   progress?: number;
   error?: string;
   serverData?: {
@@ -29,12 +30,23 @@ interface UploadedPhoto {
   };
 }
 
+interface PresignedFile {
+  id: string;
+  originalName: string;
+  key: string;
+  thumbnailKey: string;
+  uploadUrl: string;
+  thumbnailUploadUrl: string;
+  publicUrl: string;
+  thumbnailPublicUrl: string;
+}
+
 interface PhotoUploaderProps {
   projectId: string;
   onPhotosUploaded?: (photos: UploadedPhoto[]) => void;
   onProjectCreated?: (projectId: string) => void;
   maxFiles?: number;
-  maxSizePerFile?: number; // in bytes
+  maxSizePerFile?: number;
 }
 
 export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
@@ -42,13 +54,12 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   onPhotosUploaded,
   onProjectCreated,
   maxFiles = 100,
-  maxSizePerFile = 20 * 1024 * 1024, // 20MB
+  maxSizePerFile = 20 * 1024 * 1024,
 }) => {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<string>(initialProjectId);
 
-  // 프로젝트 생성 (임시 프로젝트인 경우)
   const ensureProject = async (): Promise<string | null> => {
     if (currentProjectId && currentProjectId !== 'temp') {
       return currentProjectId;
@@ -77,9 +88,62 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
     return null;
   };
 
+  const uploadSinglePhoto = async (
+    file: File,
+    presignedFile: PresignedFile,
+    photoId: string
+  ): Promise<{ width: number; height: number } | null> => {
+    try {
+      // 1. 클라이언트에서 이미지 처리 (WebP 변환 + 썸네일 생성)
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId ? { ...p, status: 'processing' as const, progress: 0 } : p
+        )
+      );
+
+      const processed = await processImage(file);
+
+      // 2. Presigned URL로 직접 업로드
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId ? { ...p, status: 'uploading' as const, progress: 0 } : p
+        )
+      );
+
+      // 원본과 썸네일 병렬 업로드
+      await Promise.all([
+        uploadToPresignedUrl(presignedFile.uploadUrl, processed.originalBlob, (progress) => {
+          setPhotos((prev) =>
+            prev.map((p) =>
+              p.id === photoId ? { ...p, progress: progress * 0.5 } : p
+            )
+          );
+        }),
+        uploadToPresignedUrl(presignedFile.thumbnailUploadUrl, processed.thumbnailBlob, (progress) => {
+          setPhotos((prev) =>
+            prev.map((p) =>
+              p.id === photoId ? { ...p, progress: 50 + progress * 0.5 } : p
+            )
+          );
+        }),
+      ]);
+
+      return { width: processed.width, height: processed.height };
+    } catch (error) {
+      console.error(`Upload error for ${file.name}:`, error);
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId
+            ? { ...p, status: 'error' as const, error: '업로드 실패' }
+            : p
+        )
+      );
+      return null;
+    }
+  };
+
   const onDrop = useCallback(
     async (acceptedFiles: File[], rejectedFiles: any[]) => {
-      // Handle rejected files
       rejectedFiles.forEach((file) => {
         console.warn('Rejected file:', file.file.name, file.errors);
       });
@@ -89,7 +153,6 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
         return;
       }
 
-      // 프로젝트 확인/생성
       const projectId = await ensureProject();
       if (!projectId) {
         alert('프로젝트 생성에 실패했습니다. 다시 시도해주세요.');
@@ -101,73 +164,120 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
         id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
         preview: URL.createObjectURL(file),
-        status: 'uploading' as const,
+        status: 'processing' as const,
         progress: 0,
       }));
 
       setPhotos((prev) => [...prev, ...newPhotos]);
       setIsUploading(true);
 
-      // Upload files
       try {
-        const formData = new FormData();
-        formData.append('projectId', projectId);
-        acceptedFiles.forEach((file) => {
-          formData.append('files', file);
-        });
-
-        const response = await fetch('/api/photos/upload', {
+        // 1. Presigned URL 요청
+        const presignResponse = await fetch('/api/photos/presign', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: formData,
+          body: JSON.stringify({
+            projectId,
+            files: acceptedFiles.map((f) => ({
+              name: f.name,
+              type: f.type,
+              size: f.size,
+            })),
+          }),
         });
 
-        if (!response.ok) {
-          throw new Error('Upload failed');
+        if (!presignResponse.ok) {
+          throw new Error('Failed to get upload URLs');
         }
 
-        const result = await response.json();
+        const presignResult = await presignResponse.json();
+        const presignedFiles: PresignedFile[] = presignResult.files;
 
-        // Update photos with server data
-        setPhotos((prev) =>
-          prev.map((photo, index) => {
-            const uploadedPhoto = result.uploaded?.find(
-              (_: any, i: number) =>
-                i === index - (prev.length - acceptedFiles.length)
+        // 2. 각 파일 업로드 (병렬 처리, 최대 3개 동시)
+        const uploadResults: Array<{
+          presignedFile: PresignedFile;
+          dimensions: { width: number; height: number } | null;
+          photoId: string;
+        }> = [];
+
+        const batchSize = 3;
+        for (let i = 0; i < acceptedFiles.length; i += batchSize) {
+          const batch = acceptedFiles.slice(i, i + batchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (file, batchIndex) => {
+              const index = i + batchIndex;
+              const presignedFile = presignedFiles[index];
+              const photoId = newPhotos[index].id;
+
+              if (!presignedFile) {
+                return { presignedFile: null, dimensions: null, photoId };
+              }
+
+              const dimensions = await uploadSinglePhoto(file, presignedFile, photoId);
+              return { presignedFile, dimensions, photoId };
+            })
+          );
+          uploadResults.push(...batchResults.filter((r) => r.presignedFile !== null) as any);
+        }
+
+        // 3. 업로드 성공한 파일들 DB에 등록
+        const successfulUploads = uploadResults.filter((r) => r.dimensions !== null);
+
+        if (successfulUploads.length > 0) {
+          const confirmResponse = await fetch('/api/photos/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              projectId,
+              photos: successfulUploads.map((r) => ({
+                id: r.presignedFile.id,
+                key: r.presignedFile.key,
+                thumbnailKey: r.presignedFile.thumbnailKey,
+                publicUrl: r.presignedFile.publicUrl,
+                thumbnailPublicUrl: r.presignedFile.thumbnailPublicUrl,
+                width: r.dimensions!.width,
+                height: r.dimensions!.height,
+              })),
+            }),
+          });
+
+          if (confirmResponse.ok) {
+            const confirmResult = await confirmResponse.json();
+
+            // 상태 업데이트
+            setPhotos((prev) =>
+              prev.map((photo) => {
+                const uploadResult = successfulUploads.find((u) => u.photoId === photo.id);
+                if (uploadResult) {
+                  const dbRecord = confirmResult.uploaded?.find(
+                    (_: any, i: number) =>
+                      successfulUploads[i]?.photoId === photo.id
+                  );
+                  return {
+                    ...photo,
+                    status: 'analyzing' as const,
+                    progress: 100,
+                    serverData: dbRecord
+                      ? {
+                          id: dbRecord.id,
+                          originalUrl: dbRecord.url,
+                          thumbnailUrl: dbRecord.thumbnailUrl,
+                        }
+                      : undefined,
+                  };
+                }
+                return photo;
+              })
             );
 
-            if (uploadedPhoto) {
-              return {
-                ...photo,
-                status: 'analyzing' as const,
-                progress: 100,
-                serverData: {
-                  id: uploadedPhoto.id,
-                  originalUrl: uploadedPhoto.originalUrl,
-                  thumbnailUrl: uploadedPhoto.thumbnailUrl,
-                },
-              };
+            // AI 분석 시작
+            if (confirmResult.uploaded?.length > 0) {
+              const photoIds = confirmResult.uploaded.map((p: any) => p.id);
+              await analyzePhotos(photoIds, projectId);
             }
-
-            const error = result.errors?.find(
-              (e: any) => e.filename === photo.file?.name
-            );
-            if (error) {
-              return {
-                ...photo,
-                status: 'error' as const,
-                error: error.error,
-              };
-            }
-
-            return photo;
-          })
-        );
-
-        // Trigger AI analysis
-        if (result.uploaded?.length > 0) {
-          const photoIds = result.uploaded.map((p: any) => p.id);
-          await analyzePhotos(photoIds);
+          }
         }
 
         onPhotosUploaded?.(photos);
@@ -175,7 +285,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
         console.error('Upload error:', error);
         setPhotos((prev) =>
           prev.map((photo) =>
-            photo.status === 'uploading'
+            photo.status === 'processing' || photo.status === 'uploading'
               ? { ...photo, status: 'error' as const, error: '업로드 실패' }
               : photo
           )
@@ -184,16 +294,16 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
         setIsUploading(false);
       }
     },
-    [currentProjectId, photos, maxFiles, onPhotosUploaded, ensureProject]
+    [currentProjectId, photos, maxFiles, onPhotosUploaded]
   );
 
-  const analyzePhotos = async (photoIds: string[]) => {
+  const analyzePhotos = async (photoIds: string[], projectId: string) => {
     try {
       const response = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ projectId: currentProjectId, photoIds }),
+        body: JSON.stringify({ projectId, photoIds }),
       });
 
       if (response.ok) {
@@ -207,6 +317,14 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       }
     } catch (error) {
       console.error('Analysis error:', error);
+      // 분석 실패해도 complete 처리 (업로드는 성공)
+      setPhotos((prev) =>
+        prev.map((photo) =>
+          photo.status === 'analyzing'
+            ? { ...photo, status: 'complete' as const }
+            : photo
+        )
+      );
     }
   };
 
@@ -282,11 +400,11 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
           <div className="flex items-center gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
             <span className="text-sm text-blue-700 dark:text-blue-300">
-              사진 업로드 중...
+              사진 업로드 중... (Vercel 제한 우회: 클라이언트 직접 업로드)
             </span>
           </div>
           <ProgressBar
-            value={(uploadedCount / totalCount) * 100}
+            value={(uploadedCount / Math.max(totalCount, 1)) * 100}
             size="sm"
             className="mt-3"
           />
@@ -334,8 +452,19 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
                 {/* Status Overlay */}
                 {photo.status !== 'complete' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    {photo.status === 'processing' && (
+                      <div className="text-center text-white">
+                        <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                        <span className="mt-1 block text-xs">이미지 처리 중...</span>
+                      </div>
+                    )}
                     {photo.status === 'uploading' && (
-                      <Loader2 className="h-8 w-8 animate-spin text-white" />
+                      <div className="text-center text-white">
+                        <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                        <span className="mt-1 block text-xs">
+                          업로드 중 {Math.round(photo.progress || 0)}%
+                        </span>
+                      </div>
                     )}
                     {photo.status === 'analyzing' && (
                       <div className="text-center text-white">
