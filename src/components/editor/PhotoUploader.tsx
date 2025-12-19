@@ -256,9 +256,14 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       }
 
       setIsUploading(false);
-      onPhotosUploaded?.(photos);
+
+      // 업로드 완료된 사진 수를 업데이트된 상태로 전달
+      setPhotos((currentPhotos) => {
+        onPhotosUploaded?.(currentPhotos);
+        return currentPhotos;
+      });
     },
-    [currentProjectId, photos, maxFiles, onPhotosUploaded]
+    [currentProjectId, maxFiles, onPhotosUploaded]
   );
 
   const removePhoto = (id: string) => {
