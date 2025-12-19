@@ -191,20 +191,102 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
             onPlayPause={(e) => onPlayChange(e.target.playing)}
           /> */}
 
-          {/* Preview Placeholder */}
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500">
-                <Monitor className="h-8 w-8 text-white" />
+          {/* Photo Slideshow Preview */}
+          <div className="relative h-full w-full overflow-hidden">
+            {inputProps?.project?.photos && inputProps.project.photos.length > 0 ? (
+              <>
+                {/* Calculate which photo to show based on current frame */}
+                {(() => {
+                  const clips = inputProps.clips || [];
+                  const introFrames = fps * 3;
+                  const photoDuration = fps * 4;
+                  const transitionDuration = fps * 1;
+
+                  // Intro
+                  if (currentFrame < introFrames) {
+                    return (
+                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-purple-900 to-indigo-900">
+                        <div className="text-center">
+                          <h2 className="text-3xl font-bold text-white mb-2">
+                            {inputProps.project.name || '새 프로젝트'}
+                          </h2>
+                          <p className="text-gray-300">PhotoStory Pro</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Calculate photo index
+                  const photoStartFrame = introFrames;
+                  const frameInPhotoSection = currentFrame - photoStartFrame;
+                  const photoIndex = Math.floor(frameInPhotoSection / (photoDuration - transitionDuration));
+                  const photos = inputProps.project.photos;
+
+                  // Outro
+                  if (photoIndex >= photos.length) {
+                    return (
+                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-indigo-900 to-purple-900">
+                        <div className="text-center">
+                          <h2 className="text-2xl font-bold text-white mb-2">감사합니다</h2>
+                          <p className="text-gray-300">PhotoStory Pro</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Photo
+                  const photo = photos[photoIndex];
+                  const frameInPhoto = frameInPhotoSection % (photoDuration - transitionDuration);
+                  const progress = frameInPhoto / photoDuration;
+
+                  // Ken Burns effect
+                  const scale = 1 + progress * 0.1;
+                  const translateX = (photoIndex % 2 === 0 ? -1 : 1) * progress * 3;
+                  const translateY = (photoIndex % 3 === 0 ? -1 : 1) * progress * 2;
+
+                  // Fade transition
+                  const fadeIn = Math.min(1, frameInPhoto / (fps * 0.5));
+                  const fadeOut = frameInPhoto > photoDuration - fps * 0.5
+                    ? 1 - (frameInPhoto - (photoDuration - fps * 0.5)) / (fps * 0.5)
+                    : 1;
+                  const opacity = Math.min(fadeIn, fadeOut);
+
+                  return (
+                    <div
+                      className="h-full w-full"
+                      style={{ opacity }}
+                    >
+                      <img
+                        src={photo.thumbnailUrl || photo.originalUrl || photo.url}
+                        alt={`Photo ${photoIndex + 1}`}
+                        className="h-full w-full object-cover transition-transform duration-100"
+                        style={{
+                          transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
+                        }}
+                      />
+                      {/* Photo number overlay */}
+                      <div className="absolute bottom-4 right-4 bg-black/50 px-3 py-1 rounded-full">
+                        <span className="text-white text-sm">
+                          {photoIndex + 1} / {photos.length}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-center">
+                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500">
+                    <Monitor className="h-8 w-8 text-white" />
+                  </div>
+                  <p className="text-lg font-medium text-white">사진이 없습니다</p>
+                  <p className="mt-1 text-sm text-gray-400">
+                    사진을 업로드해주세요
+                  </p>
+                </div>
               </div>
-              <p className="text-lg font-medium text-white">영상 미리보기</p>
-              <p className="mt-1 text-sm text-gray-400">
-                프레임: {currentFrame} / {durationInFrames}
-              </p>
-              <p className="text-sm text-gray-500">
-                {Math.round(currentFrame / fps * 10) / 10}초
-              </p>
-            </div>
+            )}
           </div>
 
           {/* Aspect Ratio Overlay */}
