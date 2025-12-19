@@ -78,29 +78,59 @@ export const VideoExporter: React.FC<VideoExporterProps> = ({
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // Intro
+    // Intro (0 ~ 3초)
     if (currentTime < introDuration) {
       const progress = currentTime / introDuration;
+      const fadeIn = Math.min(1, progress * 3);
+      const scale = 0.8 + progress * 0.2;
 
-      // Gradient background
+      // Dark gradient background
       const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#4F46E5');
-      gradient.addColorStop(1, '#7C3AED');
+      gradient.addColorStop(0, '#1a1a2e');
+      gradient.addColorStop(0.5, '#16213e');
+      gradient.addColorStop(1, '#0f3460');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
-      // Title with fade in
-      const alpha = Math.min(1, progress * 2);
-      ctx.globalAlpha = alpha;
+      // Animated particles
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      for (let i = 0; i < 30; i++) {
+        const x = ((i * 47) % width);
+        const y = ((i * 31 + progress * height * 2) % height);
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Title
+      ctx.globalAlpha = fadeIn;
+      ctx.save();
+      ctx.translate(width / 2, height / 2);
+      ctx.scale(scale, scale);
+
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = `bold ${Math.floor(width / 15)}px Pretendard, sans-serif`;
+      ctx.font = `bold ${Math.floor(width / 12)}px Pretendard, -apple-system, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(project.name || '새 프로젝트', width / 2, height / 2 - 30);
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 20;
+      ctx.fillText(project.name || '새 프로젝트', 0, -20);
 
-      ctx.font = `${Math.floor(width / 30)}px Pretendard, sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText('PhotoStory Pro', width / 2, height / 2 + 30);
+      // Animated line under title
+      const lineWidth = Math.floor(width / 6) * progress;
+      const lineGradient = ctx.createLinearGradient(-lineWidth/2, 0, lineWidth/2, 0);
+      lineGradient.addColorStop(0, '#8B5CF6');
+      lineGradient.addColorStop(1, '#EC4899');
+      ctx.fillStyle = lineGradient;
+      ctx.shadowBlur = 0;
+      ctx.fillRect(-lineWidth/2, 20, lineWidth, 4);
+
+      // Subtitle
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = `${Math.floor(width / 30)}px Pretendard, -apple-system, sans-serif`;
+      ctx.fillText('PhotoStory Pro', 0, 60);
+
+      ctx.restore();
       ctx.globalAlpha = 1;
       return;
     }
@@ -111,59 +141,76 @@ export const VideoExporter: React.FC<VideoExporterProps> = ({
 
     if (currentTime >= photoStartTime && currentTime < photoEndTime) {
       const timeInPhotoSection = currentTime - photoStartTime;
-      const photoIndex = Math.floor(timeInPhotoSection / photoDuration);
+      const photoIndex = Math.min(
+        Math.floor(timeInPhotoSection / photoDuration),
+        images.length - 1
+      );
       const timeInPhoto = timeInPhotoSection % photoDuration;
 
-      if (photoIndex < images.length && images[photoIndex]) {
+      if (photoIndex < images.length && images[photoIndex] && images[photoIndex].complete) {
         const img = images[photoIndex];
 
-        // Calculate Ken Burns effect (subtle zoom)
-        const zoomProgress = timeInPhoto / photoDuration;
-        const scale = 1 + zoomProgress * 0.05;
-
         // Fade in/out
-        let alpha = 1;
-        if (timeInPhoto < transitionDuration) {
-          alpha = timeInPhoto / transitionDuration;
-        } else if (timeInPhoto > photoDuration - transitionDuration) {
-          alpha = (photoDuration - timeInPhoto) / transitionDuration;
-        }
+        const fadeIn = Math.min(1, timeInPhoto / transitionDuration);
+        const fadeOut = timeInPhoto > photoDuration - transitionDuration
+          ? (photoDuration - timeInPhoto) / transitionDuration
+          : 1;
+        ctx.globalAlpha = Math.min(fadeIn, fadeOut);
 
-        ctx.globalAlpha = alpha;
-
-        // Draw image with object-contain behavior
-        const imgAspect = img.width / img.height;
+        // Draw image with proper aspect ratio (object-contain)
+        const imgAspect = img.naturalWidth / img.naturalHeight;
         const canvasAspect = width / height;
 
         let drawWidth, drawHeight, drawX, drawY;
 
         if (imgAspect > canvasAspect) {
-          drawWidth = width * scale;
-          drawHeight = (width / imgAspect) * scale;
-          drawX = (width - drawWidth) / 2;
-          drawY = (height - drawHeight) / 2;
+          // Image is wider
+          drawWidth = width * 0.95;
+          drawHeight = drawWidth / imgAspect;
         } else {
-          drawHeight = height * scale;
-          drawWidth = (height * imgAspect) * scale;
-          drawX = (width - drawWidth) / 2;
-          drawY = (height - drawHeight) / 2;
+          // Image is taller
+          drawHeight = height * 0.95;
+          drawWidth = drawHeight * imgAspect;
         }
 
+        drawX = (width - drawWidth) / 2;
+        drawY = (height - drawHeight) / 2;
+
         ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-
-        // Photo counter
-        ctx.globalAlpha = 0.7;
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        const counterWidth = 80;
-        const counterHeight = 30;
-        ctx.fillRect(width - counterWidth - 20, height - counterHeight - 20, counterWidth, counterHeight);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `${Math.floor(width / 50)}px Pretendard, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${photoIndex + 1} / ${images.length}`, width - counterWidth / 2 - 20, height - counterHeight / 2 - 20);
-
         ctx.globalAlpha = 1;
+
+        // Photo counter background
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        const counterPadding = 12;
+        const counterText = `${photoIndex + 1} / ${images.length}`;
+        ctx.font = `bold ${Math.floor(width / 50)}px Pretendard, sans-serif`;
+        const textWidth = ctx.measureText(counterText).width;
+
+        ctx.beginPath();
+        ctx.roundRect(
+          width - textWidth - counterPadding * 3,
+          height - 50,
+          textWidth + counterPadding * 2,
+          32,
+          16
+        );
+        ctx.fill();
+
+        // Photo counter text
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(counterText, width - counterPadding * 2, height - 34);
+
+        // Progress bar at bottom
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.fillRect(0, height - 4, width, 4);
+
+        const progressGradient = ctx.createLinearGradient(0, 0, width * (timeInPhoto / photoDuration), 0);
+        progressGradient.addColorStop(0, '#8B5CF6');
+        progressGradient.addColorStop(1, '#EC4899');
+        ctx.fillStyle = progressGradient;
+        ctx.fillRect(0, height - 4, width * (timeInPhoto / photoDuration), 4);
       }
       return;
     }
@@ -171,26 +218,37 @@ export const VideoExporter: React.FC<VideoExporterProps> = ({
     // Outro
     if (currentTime >= photoEndTime) {
       const outroProgress = (currentTime - photoEndTime) / outroDuration;
+      const fadeIn = Math.min(1, outroProgress * 2);
 
-      // Gradient background
+      // Dark gradient background (reversed)
       const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#7C3AED');
-      gradient.addColorStop(1, '#4F46E5');
+      gradient.addColorStop(0, '#0f3460');
+      gradient.addColorStop(0.5, '#16213e');
+      gradient.addColorStop(1, '#1a1a2e');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
-      // Thank you message
-      const alpha = outroProgress < 0.5 ? outroProgress * 2 : 1;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = `bold ${Math.floor(width / 15)}px Pretendard, sans-serif`;
+      ctx.globalAlpha = fadeIn;
+
+      // Sparkle emoji
+      ctx.font = `${Math.floor(width / 8)}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('감사합니다', width / 2, height / 2 - 30);
+      ctx.fillText('✨', width / 2, height / 2 - 60);
 
-      ctx.font = `${Math.floor(width / 30)}px Pretendard, sans-serif`;
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText('PhotoStory Pro', width / 2, height / 2 + 30);
+      // Thank you text
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `bold ${Math.floor(width / 12)}px Pretendard, -apple-system, sans-serif`;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 20;
+      ctx.fillText('감사합니다', width / 2, height / 2 + 20);
+
+      // Subtitle
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = `${Math.floor(width / 35)}px Pretendard, -apple-system, sans-serif`;
+      ctx.fillText('Made with PhotoStory Pro', width / 2, height / 2 + 70);
+
       ctx.globalAlpha = 1;
     }
   };

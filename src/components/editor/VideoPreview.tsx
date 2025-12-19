@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Player, PlayerRef } from '@remotion/player';
 import {
   Maximize2,
   Minimize2,
@@ -10,6 +9,8 @@ import {
   Monitor,
   Smartphone,
   Square,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 interface VideoPreviewProps {
@@ -42,35 +43,72 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   onFrameChange,
   onPlayChange,
 }) => {
-  const playerRef = useRef<PlayerRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const narrationRef = useRef<HTMLAudioElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [previewSize, setPreviewSize] = useState<'fit' | 'fill'>('fit');
+  const [isMuted, setIsMuted] = useState(false);
+  const [containerSize, setContainerSize] = useState({ width: 640, height: 360 });
 
   const { width, height } = aspectRatioConfig[aspectRatio];
 
-  // Sync player with external frame control
-  useEffect(() => {
-    if (playerRef.current) {
-      const player = playerRef.current;
-      const playerFrame = player.getCurrentFrame();
+  // Calculate timing
+  const introFrames = fps * 3;
+  const photoDuration = fps * 4;
+  const photos = inputProps?.project?.photos || [];
+  const totalPhotoFrames = photos.length * photoDuration;
+  const outroStart = introFrames + totalPhotoFrames;
+  const outroFrames = fps * 3;
 
-      if (Math.abs(playerFrame - currentFrame) > 1) {
-        player.seekTo(currentFrame);
+  // Audio URLs from project
+  const bgmUrl = inputProps?.project?.audio?.bgmUrl || inputProps?.project?.audio?.url;
+  const narrationUrl = inputProps?.project?.narration?.audioUrl;
+
+  // Handle container resize
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setContainerSize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight - 48,
+        });
+      }
+    };
+
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  // Sync audio with playback
+  useEffect(() => {
+    const currentTime = currentFrame / fps;
+
+    if (audioRef.current) {
+      if (Math.abs(audioRef.current.currentTime - currentTime) > 0.5) {
+        audioRef.current.currentTime = currentTime;
+      }
+      audioRef.current.muted = isMuted;
+      if (isPlaying && audioRef.current.paused) {
+        audioRef.current.play().catch(() => {});
+      } else if (!isPlaying && !audioRef.current.paused) {
+        audioRef.current.pause();
       }
     }
-  }, [currentFrame]);
 
-  // Handle play state sync
-  useEffect(() => {
-    if (playerRef.current) {
-      if (isPlaying) {
-        playerRef.current.play();
-      } else {
-        playerRef.current.pause();
+    if (narrationRef.current) {
+      if (Math.abs(narrationRef.current.currentTime - currentTime) > 0.5) {
+        narrationRef.current.currentTime = currentTime;
+      }
+      narrationRef.current.muted = isMuted;
+      if (isPlaying && narrationRef.current.paused) {
+        narrationRef.current.play().catch(() => {});
+      } else if (!isPlaying && !narrationRef.current.paused) {
+        narrationRef.current.pause();
       }
     }
-  }, [isPlaying]);
+  }, [currentFrame, fps, isPlaying, isMuted]);
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
@@ -85,35 +123,302 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   };
 
   // Calculate preview dimensions
-  const calculatePreviewDimensions = () => {
-    if (!containerRef.current) return { width: 640, height: 360 };
-
-    const containerWidth = containerRef.current.clientWidth;
-    const containerHeight = containerRef.current.clientHeight - 48; // Subtract toolbar height
-
+  const previewDimensions = useMemo(() => {
     const videoAspect = width / height;
-    const containerAspect = containerWidth / containerHeight;
+    const containerAspect = containerSize.width / containerSize.height;
 
     if (previewSize === 'fit') {
       if (containerAspect > videoAspect) {
-        // Container is wider than video
         return {
-          width: Math.floor(containerHeight * videoAspect),
-          height: containerHeight,
+          width: Math.floor(containerSize.height * videoAspect),
+          height: containerSize.height,
         };
       } else {
-        // Container is taller than video
         return {
-          width: containerWidth,
-          height: Math.floor(containerWidth / videoAspect),
+          width: containerSize.width,
+          height: Math.floor(containerSize.width / videoAspect),
         };
       }
     }
 
-    return { width: containerWidth, height: containerHeight };
+    return { width: containerSize.width, height: containerSize.height };
+  }, [containerSize, width, height, previewSize]);
+
+  // Render intro section
+  const renderIntro = () => {
+    const progress = currentFrame / introFrames;
+    const fadeIn = Math.min(1, progress * 2);
+    const scale = 0.85 + progress * 0.15;
+    const titleY = 50 - progress * 20;
+
+    return (
+      <div
+        className="absolute inset-0 flex items-center justify-center overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+        }}
+      >
+        {/* Animated gradient overlay */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `radial-gradient(circle at ${30 + progress * 40}% ${30 + progress * 40}%, rgba(139, 92, 246, 0.3) 0%, transparent 50%)`,
+          }}
+        />
+
+        {/* Floating particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {Array.from({ length: 30 }).map((_, i) => {
+            const x = (i * 47 + progress * 200) % 100;
+            const y = (i * 31 + progress * 100) % 100;
+            const size = 2 + (i % 3);
+            const opacity = 0.2 + Math.sin(progress * Math.PI * 2 + i) * 0.2;
+            return (
+              <div
+                key={i}
+                className="absolute rounded-full bg-white"
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  width: size,
+                  height: size,
+                  opacity,
+                }}
+              />
+            );
+          })}
+        </div>
+
+        {/* Main content */}
+        <div
+          className="text-center z-10 px-8"
+          style={{
+            opacity: fadeIn,
+            transform: `scale(${scale}) translateY(${titleY}px)`,
+          }}
+        >
+          {/* Project title */}
+          <h1
+            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6"
+            style={{
+              textShadow: '0 4px 30px rgba(0,0,0,0.5), 0 0 60px rgba(139, 92, 246, 0.3)',
+              letterSpacing: '0.02em',
+            }}
+          >
+            {inputProps?.project?.name || '새 프로젝트'}
+          </h1>
+
+          {/* Animated underline */}
+          <div className="flex justify-center mb-6">
+            <div
+              className="h-1 rounded-full"
+              style={{
+                width: `${Math.min(progress * 200, 120)}px`,
+                background: 'linear-gradient(90deg, #8B5CF6 0%, #EC4899 50%, #8B5CF6 100%)',
+                boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)',
+              }}
+            />
+          </div>
+
+          {/* Subtitle with fade */}
+          <p
+            className="text-base sm:text-lg text-gray-300"
+            style={{
+              opacity: Math.max(0, (progress - 0.3) * 2),
+            }}
+          >
+            PhotoStory Pro
+          </p>
+
+          {/* Photo count */}
+          {photos.length > 0 && (
+            <p
+              className="text-sm text-gray-400 mt-4"
+              style={{
+                opacity: Math.max(0, (progress - 0.5) * 2),
+              }}
+            >
+              {photos.length}장의 사진으로 만든 이야기
+            </p>
+          )}
+        </div>
+      </div>
+    );
   };
 
-  const previewDimensions = calculatePreviewDimensions();
+  // Render photo section
+  const renderPhoto = () => {
+    const frameInPhotoSection = currentFrame - introFrames;
+    const photoIndex = Math.min(
+      Math.floor(frameInPhotoSection / photoDuration),
+      photos.length - 1
+    );
+    const photo = photos[photoIndex];
+    const frameInPhoto = frameInPhotoSection % photoDuration;
+    const photoProgress = frameInPhoto / photoDuration;
+
+    // Smooth fade transitions
+    const fadeInDuration = fps * 0.5;
+    const fadeOutStart = photoDuration - fps * 0.5;
+    let opacity = 1;
+    if (frameInPhoto < fadeInDuration) {
+      opacity = frameInPhoto / fadeInDuration;
+    } else if (frameInPhoto > fadeOutStart) {
+      opacity = (photoDuration - frameInPhoto) / (fps * 0.5);
+    }
+
+    // Subtle Ken Burns effect (very gentle)
+    const scale = 1 + photoProgress * 0.02;
+    const translateX = photoProgress * 1;
+    const translateY = photoProgress * 0.5;
+
+    const photoUrl = photo?.originalUrl || photo?.thumbnailUrl || photo?.url;
+
+    return (
+      <div className="absolute inset-0 bg-black flex items-center justify-center overflow-hidden">
+        {/* Photo container */}
+        <div
+          className="relative flex items-center justify-center"
+          style={{
+            width: '100%',
+            height: '100%',
+            opacity,
+          }}
+        >
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt={`Photo ${photoIndex + 1}`}
+              className="max-w-[92%] max-h-[92%] object-contain rounded-sm"
+              style={{
+                transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              }}
+              crossOrigin="anonymous"
+            />
+          ) : (
+            <div className="w-64 h-64 bg-gray-800 rounded-lg flex items-center justify-center">
+              <span className="text-gray-500">이미지 로딩 중...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Photo counter badge */}
+        <div className="absolute bottom-5 right-5 bg-black/70 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+          <span className="text-white text-sm font-medium">
+            {photoIndex + 1} / {photos.length}
+          </span>
+        </div>
+
+        {/* Progress bar */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+          <div
+            className="h-full transition-all duration-100"
+            style={{
+              width: `${photoProgress * 100}%`,
+              background: 'linear-gradient(90deg, #8B5CF6, #EC4899)',
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // Render outro section
+  const renderOutro = () => {
+    const outroProgress = Math.min((currentFrame - outroStart) / outroFrames, 1);
+    const fadeIn = Math.min(1, outroProgress * 2);
+    const scale = 0.9 + fadeIn * 0.1;
+
+    return (
+      <div
+        className="absolute inset-0 flex items-center justify-center overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, #0f3460 0%, #16213e 50%, #1a1a2e 100%)',
+        }}
+      >
+        {/* Radial glow */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.15) 0%, transparent 50%)',
+          }}
+        />
+
+        {/* Content */}
+        <div
+          className="text-center z-10"
+          style={{
+            opacity: fadeIn,
+            transform: `scale(${scale})`,
+          }}
+        >
+          {/* Sparkle icon */}
+          <div
+            className="text-5xl sm:text-6xl mb-6"
+            style={{
+              filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.3))',
+            }}
+          >
+            ✨
+          </div>
+
+          {/* Thank you text */}
+          <h2
+            className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4"
+            style={{
+              textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            }}
+          >
+            감사합니다
+          </h2>
+
+          {/* Subtitle */}
+          <p className="text-gray-400 text-sm sm:text-base">
+            Made with PhotoStory Pro
+          </p>
+
+          {/* Decorative line */}
+          <div
+            className="w-16 h-0.5 mx-auto mt-6 rounded-full"
+            style={{
+              background: 'linear-gradient(90deg, transparent, #8B5CF6, #EC4899, transparent)',
+              opacity: Math.max(0, (outroProgress - 0.3) * 2),
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // Determine which section to render
+  const renderContent = () => {
+    if (!photos || photos.length === 0) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center">
+            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500">
+              <Monitor className="h-8 w-8 text-white" />
+            </div>
+            <p className="text-lg font-medium text-white">사진이 없습니다</p>
+            <p className="mt-1 text-sm text-gray-400">
+              사진을 업로드해주세요
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (currentFrame < introFrames) {
+      return renderIntro();
+    }
+
+    if (currentFrame < outroStart) {
+      return renderPhoto();
+    }
+
+    return renderOutro();
+  };
 
   return (
     <div
@@ -123,6 +428,25 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         isFullscreen ? 'fixed inset-0 z-50' : 'h-full'
       )}
     >
+      {/* Audio elements */}
+      {bgmUrl && (
+        <audio
+          ref={audioRef}
+          src={bgmUrl}
+          loop
+          preload="auto"
+          style={{ display: 'none' }}
+        />
+      )}
+      {narrationUrl && (
+        <audio
+          ref={narrationRef}
+          src={narrationUrl}
+          preload="auto"
+          style={{ display: 'none' }}
+        />
+      )}
+
       {/* Preview Toolbar */}
       <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900 px-4 py-2">
         <div className="flex items-center gap-2">
@@ -133,6 +457,19 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Volume Toggle */}
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="rounded p-1.5 hover:bg-gray-800"
+            title={isMuted ? '음소거 해제' : '음소거'}
+          >
+            {isMuted ? (
+              <VolumeX className="h-4 w-4 text-gray-400" />
+            ) : (
+              <Volume2 className="h-4 w-4 text-gray-400" />
+            )}
+          </button>
+
           {/* Aspect Ratio Indicator */}
           <div className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1">
             {aspectRatio === '16:9' && <Monitor className="h-4 w-4 text-gray-400" />}
@@ -166,133 +503,15 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
 
       {/* Video Player Container */}
       <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
-        {/* Placeholder for Remotion Player */}
         <div
-          className="relative rounded-lg bg-gray-800 shadow-2xl"
+          className="relative rounded-lg overflow-hidden shadow-2xl"
           style={{
             width: previewDimensions.width,
             height: previewDimensions.height,
+            backgroundColor: '#000',
           }}
         >
-          {/* When Remotion is properly set up, use the Player component */}
-          {/* <Player
-            ref={playerRef}
-            component={PhotoStory}
-            compositionWidth={width}
-            compositionHeight={height}
-            durationInFrames={durationInFrames}
-            fps={fps}
-            inputProps={inputProps}
-            style={{
-              width: '100%',
-              height: '100%',
-            }}
-            onFrameUpdate={onFrameChange}
-            onPlayPause={(e) => onPlayChange(e.target.playing)}
-          /> */}
-
-          {/* Photo Slideshow Preview */}
-          <div className="relative h-full w-full overflow-hidden">
-            {inputProps?.project?.photos && inputProps.project.photos.length > 0 ? (
-              <>
-                {/* Calculate which photo to show based on current frame */}
-                {(() => {
-                  const clips = inputProps.clips || [];
-                  const introFrames = fps * 3;
-                  const photoDuration = fps * 4;
-                  const transitionDuration = fps * 1;
-
-                  // Intro
-                  if (currentFrame < introFrames) {
-                    return (
-                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-purple-900 to-indigo-900">
-                        <div className="text-center">
-                          <h2 className="text-3xl font-bold text-white mb-2">
-                            {inputProps.project.name || '새 프로젝트'}
-                          </h2>
-                          <p className="text-gray-300">PhotoStory Pro</p>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Calculate photo index
-                  const photoStartFrame = introFrames;
-                  const frameInPhotoSection = currentFrame - photoStartFrame;
-                  const photoIndex = Math.floor(frameInPhotoSection / (photoDuration - transitionDuration));
-                  const photos = inputProps.project.photos;
-
-                  // Outro
-                  if (photoIndex >= photos.length) {
-                    return (
-                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-indigo-900 to-purple-900">
-                        <div className="text-center">
-                          <h2 className="text-2xl font-bold text-white mb-2">감사합니다</h2>
-                          <p className="text-gray-300">PhotoStory Pro</p>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Photo
-                  const photo = photos[photoIndex];
-                  const frameInPhoto = frameInPhotoSection % (photoDuration - transitionDuration);
-                  const progress = frameInPhoto / photoDuration;
-
-                  // Subtle Ken Burns effect (very minimal zoom)
-                  const scale = 1 + progress * 0.02; // 2% zoom only
-
-                  // Fade transition
-                  const fadeIn = Math.min(1, frameInPhoto / (fps * 0.3));
-                  const fadeOut = frameInPhoto > photoDuration - fps * 0.3
-                    ? 1 - (frameInPhoto - (photoDuration - fps * 0.3)) / (fps * 0.3)
-                    : 1;
-                  const opacity = Math.min(fadeIn, fadeOut);
-
-                  return (
-                    <div
-                      className="h-full w-full"
-                      style={{ opacity }}
-                    >
-                      <img
-                        src={photo.thumbnailUrl || photo.originalUrl || photo.url}
-                        alt={`Photo ${photoIndex + 1}`}
-                        className="h-full w-full object-contain bg-black"
-                        style={{
-                          transform: `scale(${scale})`,
-                        }}
-                      />
-                      {/* Photo number overlay */}
-                      <div className="absolute bottom-4 right-4 bg-black/50 px-3 py-1 rounded-full">
-                        <span className="text-white text-sm">
-                          {photoIndex + 1} / {photos.length}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="text-center">
-                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500">
-                    <Monitor className="h-8 w-8 text-white" />
-                  </div>
-                  <p className="text-lg font-medium text-white">사진이 없습니다</p>
-                  <p className="mt-1 text-sm text-gray-400">
-                    사진을 업로드해주세요
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Aspect Ratio Overlay */}
-          {aspectRatio === '9:16' && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="text-xs text-gray-600">모바일 세로 영상</div>
-            </div>
-          )}
+          {renderContent()}
         </div>
       </div>
 
