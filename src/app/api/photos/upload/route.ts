@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { uploadImage } from '@/lib/r2';
-import { randomUUID } from 'crypto';
+import { uploadImageToSupabase } from '@/lib/supabase-storage';
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
-// CORS 헤더 추가 함수
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -15,7 +13,6 @@ function corsHeaders() {
   };
 }
 
-// OPTIONS 요청 처리 (CORS preflight)
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
@@ -43,7 +40,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 프로젝트 조회 (소유권 검사 없이)
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
@@ -64,7 +60,6 @@ export async function POST(request: NextRequest) {
 
     for (const file of files) {
       try {
-        // Validate file
         if (!ALLOWED_TYPES.includes(file.type)) {
           errors.push({
             filename: file.name,
@@ -81,18 +76,11 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Convert to buffer
         const buffer = Buffer.from(await file.arrayBuffer());
 
-        // Generate unique filename
-        const fileId = randomUUID();
-        const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-        const filename = `${projectId}/${fileId}.${extension}`;
+        // Supabase Storage로 업로드
+        const uploadResult = await uploadImageToSupabase(buffer, file.name, projectId);
 
-        // Upload original file and generate thumbnail
-        const uploadResult = await uploadImage(buffer, filename, projectId);
-
-        // Create photo record
         const photo = await prisma.photo.create({
           data: {
             projectId,
@@ -115,7 +103,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update project's updated timestamp
     await prisma.project.update({
       where: { id: projectId },
       data: { updatedAt: new Date() },
@@ -135,7 +122,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Analyze photos with AI
 export async function PUT(request: NextRequest) {
   try {
     const { photoIds } = await request.json();
@@ -147,7 +133,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 사진 조회
     const photos = await prisma.photo.findMany({
       where: {
         id: { in: photoIds },
@@ -164,23 +149,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Import themes for analysis
-    const { themes } = await import('@/data/themes');
-    const project = photos[0].project;
-    const theme = themes.find((t) => t.id === project.themeId) || themes[0];
-
     const analyzedPhotos = [];
 
     for (const photo of photos) {
       try {
-        // Analyze photo with Gemini (이 함수가 없으므로 간단히 처리)
         const updatedPhoto = await prisma.photo.update({
           where: { id: photo.id },
           data: {
             analysis: { analyzed: true, timestamp: new Date().toISOString() },
           },
         });
-
         analyzedPhotos.push(updatedPhoto);
       } catch (error) {
         console.error(`Error analyzing photo ${photo.id}:`, error);
