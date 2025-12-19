@@ -239,15 +239,13 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                   const frameInPhoto = frameInPhotoSection % (photoDuration - transitionDuration);
                   const progress = frameInPhoto / photoDuration;
 
-                  // Ken Burns effect
-                  const scale = 1 + progress * 0.1;
-                  const translateX = (photoIndex % 2 === 0 ? -1 : 1) * progress * 3;
-                  const translateY = (photoIndex % 3 === 0 ? -1 : 1) * progress * 2;
+                  // Subtle Ken Burns effect (very minimal zoom)
+                  const scale = 1 + progress * 0.02; // 2% zoom only
 
                   // Fade transition
-                  const fadeIn = Math.min(1, frameInPhoto / (fps * 0.5));
-                  const fadeOut = frameInPhoto > photoDuration - fps * 0.5
-                    ? 1 - (frameInPhoto - (photoDuration - fps * 0.5)) / (fps * 0.5)
+                  const fadeIn = Math.min(1, frameInPhoto / (fps * 0.3));
+                  const fadeOut = frameInPhoto > photoDuration - fps * 0.3
+                    ? 1 - (frameInPhoto - (photoDuration - fps * 0.3)) / (fps * 0.3)
                     : 1;
                   const opacity = Math.min(fadeIn, fadeOut);
 
@@ -259,9 +257,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                       <img
                         src={photo.thumbnailUrl || photo.originalUrl || photo.url}
                         alt={`Photo ${photoIndex + 1}`}
-                        className="h-full w-full object-cover transition-transform duration-100"
+                        className="h-full w-full object-contain bg-black"
                         style={{
-                          transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
+                          transform: `scale(${scale})`,
                         }}
                       />
                       {/* Photo number overlay */}
