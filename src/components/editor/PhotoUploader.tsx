@@ -4,11 +4,9 @@ import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { cn } from '@/lib/utils';
 import { Button, ProgressBar } from '@/components/common';
-import { processImage, uploadToPresignedUrl } from '@/lib/imageProcessor';
 import {
   Upload,
   Image,
-  X,
   AlertCircle,
   CheckCircle,
   Loader2,
@@ -20,7 +18,7 @@ interface UploadedPhoto {
   id: string;
   file?: File;
   preview: string;
-  status: 'processing' | 'uploading' | 'analyzing' | 'complete' | 'error';
+  status: 'waiting' | 'uploading' | 'analyzing' | 'complete' | 'error';
   progress?: number;
   error?: string;
   serverData?: {
@@ -30,23 +28,74 @@ interface UploadedPhoto {
   };
 }
 
-interface PresignedFile {
-  id: string;
-  originalName: string;
-  key: string;
-  thumbnailKey: string;
-  uploadUrl: string;
-  thumbnailUploadUrl: string;
-  publicUrl: string;
-  thumbnailPublicUrl: string;
-}
-
 interface PhotoUploaderProps {
   projectId: string;
   onPhotosUploaded?: (photos: UploadedPhoto[]) => void;
   onProjectCreated?: (projectId: string) => void;
   maxFiles?: number;
   maxSizePerFile?: number;
+}
+
+// 이미지를 압축하여 3MB 이하로 만드는 함수
+async function compressImage(file: File, maxSizeMB: number = 3): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+
+      // 최대 크기 제한 (2048px)
+      const maxDim = 2048;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = (height / width) * maxDim;
+          width = maxDim;
+        } else {
+          width = (width / height) * maxDim;
+          height = maxDim;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas context not available'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // 품질을 조정하면서 목표 크기 이하로 압축
+      let quality = 0.8;
+      const tryCompress = () => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Failed to compress image'));
+              return;
+            }
+
+            const sizeMB = blob.size / (1024 * 1024);
+            if (sizeMB > maxSizeMB && quality > 0.3) {
+              quality -= 0.1;
+              tryCompress();
+            } else {
+              resolve(blob);
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+
+      tryCompress();
+    };
+
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
@@ -88,47 +137,69 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
     return null;
   };
 
-  const uploadSinglePhoto = async (
+  // 한 장씩 업로드 (순차 처리로 413 에러 방지)
+  const uploadSingleFile = async (
     file: File,
-    presignedFile: PresignedFile,
+    projectId: string,
     photoId: string
-  ): Promise<{ width: number; height: number } | null> => {
+  ): Promise<boolean> => {
     try {
-      // 1. 클라이언트에서 이미지 처리 (WebP 변환 + 썸네일 생성)
       setPhotos((prev) =>
         prev.map((p) =>
-          p.id === photoId ? { ...p, status: 'processing' as const, progress: 0 } : p
+          p.id === photoId ? { ...p, status: 'uploading' as const, progress: 10 } : p
         )
       );
 
-      const processed = await processImage(file);
+      // 이미지 압축 (3MB 이하로)
+      const compressedBlob = await compressImage(file, 3);
 
-      // 2. Presigned URL로 직접 업로드
       setPhotos((prev) =>
         prev.map((p) =>
-          p.id === photoId ? { ...p, status: 'uploading' as const, progress: 0 } : p
+          p.id === photoId ? { ...p, progress: 30 } : p
         )
       );
 
-      // 원본과 썸네일 병렬 업로드
-      await Promise.all([
-        uploadToPresignedUrl(presignedFile.uploadUrl, processed.originalBlob, (progress) => {
-          setPhotos((prev) =>
-            prev.map((p) =>
-              p.id === photoId ? { ...p, progress: progress * 0.5 } : p
-            )
-          );
-        }),
-        uploadToPresignedUrl(presignedFile.thumbnailUploadUrl, processed.thumbnailBlob, (progress) => {
-          setPhotos((prev) =>
-            prev.map((p) =>
-              p.id === photoId ? { ...p, progress: 50 + progress * 0.5 } : p
-            )
-          );
-        }),
-      ]);
+      // FormData로 한 장씩 전송
+      const formData = new FormData();
+      formData.append('projectId', projectId);
+      formData.append('files', compressedBlob, file.name);
 
-      return { width: processed.width, height: processed.height };
+      const response = await fetch('/api/photos/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Upload response error:', response.status, errorText);
+        throw new Error(`Upload failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.uploaded && result.uploaded.length > 0) {
+        const uploadedPhoto = result.uploaded[0];
+        setPhotos((prev) =>
+          prev.map((p) =>
+            p.id === photoId
+              ? {
+                  ...p,
+                  status: 'complete' as const,
+                  progress: 100,
+                  serverData: {
+                    id: uploadedPhoto.id,
+                    originalUrl: uploadedPhoto.url,
+                    thumbnailUrl: uploadedPhoto.thumbnailUrl,
+                  },
+                }
+              : p
+          )
+        );
+        return true;
+      } else {
+        throw new Error(result.errors?.[0]?.error || 'Unknown error');
+      }
     } catch (error) {
       console.error(`Upload error for ${file.name}:`, error);
       setPhotos((prev) =>
@@ -138,7 +209,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
             : p
         )
       );
-      return null;
+      return false;
     }
   };
 
@@ -159,174 +230,36 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
         return;
       }
 
-      // Create preview photos
+      // 미리보기 생성
       const newPhotos: UploadedPhoto[] = acceptedFiles.map((file) => ({
         id: `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
         preview: URL.createObjectURL(file),
-        status: 'processing' as const,
+        status: 'waiting' as const,
         progress: 0,
       }));
 
       setPhotos((prev) => [...prev, ...newPhotos]);
       setIsUploading(true);
 
-      try {
-        // 1. Presigned URL 요청
-        const presignResponse = await fetch('/api/photos/presign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            projectId,
-            files: acceptedFiles.map((f) => ({
-              name: f.name,
-              type: f.type,
-              size: f.size,
-            })),
-          }),
-        });
+      // 한 장씩 순차적으로 업로드 (413 에러 방지)
+      for (let i = 0; i < acceptedFiles.length; i++) {
+        const file = acceptedFiles[i];
+        const photoId = newPhotos[i].id;
 
-        if (!presignResponse.ok) {
-          throw new Error('Failed to get upload URLs');
+        await uploadSingleFile(file, projectId, photoId);
+
+        // 약간의 딜레이 (서버 부하 방지)
+        if (i < acceptedFiles.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
-
-        const presignResult = await presignResponse.json();
-        const presignedFiles: PresignedFile[] = presignResult.files;
-
-        // 2. 각 파일 업로드 (병렬 처리, 최대 3개 동시)
-        const uploadResults: Array<{
-          presignedFile: PresignedFile;
-          dimensions: { width: number; height: number } | null;
-          photoId: string;
-        }> = [];
-
-        const batchSize = 3;
-        for (let i = 0; i < acceptedFiles.length; i += batchSize) {
-          const batch = acceptedFiles.slice(i, i + batchSize);
-          const batchResults = await Promise.all(
-            batch.map(async (file, batchIndex) => {
-              const index = i + batchIndex;
-              const presignedFile = presignedFiles[index];
-              const photoId = newPhotos[index].id;
-
-              if (!presignedFile) {
-                return { presignedFile: null, dimensions: null, photoId };
-              }
-
-              const dimensions = await uploadSinglePhoto(file, presignedFile, photoId);
-              return { presignedFile, dimensions, photoId };
-            })
-          );
-          uploadResults.push(...batchResults.filter((r) => r.presignedFile !== null) as any);
-        }
-
-        // 3. 업로드 성공한 파일들 DB에 등록
-        const successfulUploads = uploadResults.filter((r) => r.dimensions !== null);
-
-        if (successfulUploads.length > 0) {
-          const confirmResponse = await fetch('/api/photos/confirm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              projectId,
-              photos: successfulUploads.map((r) => ({
-                id: r.presignedFile.id,
-                key: r.presignedFile.key,
-                thumbnailKey: r.presignedFile.thumbnailKey,
-                publicUrl: r.presignedFile.publicUrl,
-                thumbnailPublicUrl: r.presignedFile.thumbnailPublicUrl,
-                width: r.dimensions!.width,
-                height: r.dimensions!.height,
-              })),
-            }),
-          });
-
-          if (confirmResponse.ok) {
-            const confirmResult = await confirmResponse.json();
-
-            // 상태 업데이트
-            setPhotos((prev) =>
-              prev.map((photo) => {
-                const uploadResult = successfulUploads.find((u) => u.photoId === photo.id);
-                if (uploadResult) {
-                  const dbRecord = confirmResult.uploaded?.find(
-                    (_: any, i: number) =>
-                      successfulUploads[i]?.photoId === photo.id
-                  );
-                  return {
-                    ...photo,
-                    status: 'analyzing' as const,
-                    progress: 100,
-                    serverData: dbRecord
-                      ? {
-                          id: dbRecord.id,
-                          originalUrl: dbRecord.url,
-                          thumbnailUrl: dbRecord.thumbnailUrl,
-                        }
-                      : undefined,
-                  };
-                }
-                return photo;
-              })
-            );
-
-            // AI 분석 시작
-            if (confirmResult.uploaded?.length > 0) {
-              const photoIds = confirmResult.uploaded.map((p: any) => p.id);
-              await analyzePhotos(photoIds, projectId);
-            }
-          }
-        }
-
-        onPhotosUploaded?.(photos);
-      } catch (error) {
-        console.error('Upload error:', error);
-        setPhotos((prev) =>
-          prev.map((photo) =>
-            photo.status === 'processing' || photo.status === 'uploading'
-              ? { ...photo, status: 'error' as const, error: '업로드 실패' }
-              : photo
-          )
-        );
-      } finally {
-        setIsUploading(false);
       }
+
+      setIsUploading(false);
+      onPhotosUploaded?.(photos);
     },
     [currentProjectId, photos, maxFiles, onPhotosUploaded]
   );
-
-  const analyzePhotos = async (photoIds: string[], projectId: string) => {
-    try {
-      const response = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ projectId, photoIds }),
-      });
-
-      if (response.ok) {
-        setPhotos((prev) =>
-          prev.map((photo) =>
-            photo.serverData && photoIds.includes(photo.serverData.id)
-              ? { ...photo, status: 'complete' as const }
-              : photo
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Analysis error:', error);
-      // 분석 실패해도 complete 처리 (업로드는 성공)
-      setPhotos((prev) =>
-        prev.map((photo) =>
-          photo.status === 'analyzing'
-            ? { ...photo, status: 'complete' as const }
-            : photo
-        )
-      );
-    }
-  };
 
   const removePhoto = (id: string) => {
     setPhotos((prev) => {
@@ -400,7 +333,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
           <div className="flex items-center gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
             <span className="text-sm text-blue-700 dark:text-blue-300">
-              사진 업로드 중... (Vercel 제한 우회: 클라이언트 직접 업로드)
+              사진 업로드 중... ({uploadedCount}/{totalCount})
             </span>
           </div>
           <ProgressBar
@@ -418,7 +351,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
             <h3 className="font-medium text-gray-900 dark:text-white">
               업로드된 사진 ({uploadedCount}/{totalCount})
             </h3>
-            {uploadedCount > 0 && (
+            {photos.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -452,10 +385,10 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
                 {/* Status Overlay */}
                 {photo.status !== 'complete' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    {photo.status === 'processing' && (
+                    {photo.status === 'waiting' && (
                       <div className="text-center text-white">
-                        <Loader2 className="mx-auto h-6 w-6 animate-spin" />
-                        <span className="mt-1 block text-xs">이미지 처리 중...</span>
+                        <div className="mx-auto h-6 w-6 rounded-full border-2 border-white/30" />
+                        <span className="mt-1 block text-xs">대기 중...</span>
                       </div>
                     )}
                     {photo.status === 'uploading' && (
