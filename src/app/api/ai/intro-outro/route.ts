@@ -70,13 +70,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get theme
-    const theme = themes.find((t) => t.id === project.themeId);
+    // Get theme (use first theme as fallback)
+    const theme = themes.find((t) => t.id === project.themeId) || themes[0];
     if (!theme) {
-      return NextResponse.json(
-        { error: 'Invalid theme' },
-        { status: 400 }
-      );
+      // This should never happen if themes array is not empty
+      return NextResponse.json({
+        success: true,
+        introConfig: { title: project.title || '새 프로젝트', subtitle: 'PhotoStory Pro' },
+        outroConfig: { message: '감사합니다', subtitle: 'PhotoStory Pro' },
+      });
     }
 
     // Prepare photo analyses for context

@@ -53,13 +53,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get theme
-    const theme = themes.find((t) => t.id === project.themeId);
+    // Get theme (use first theme as fallback)
+    const theme = themes.find((t) => t.id === project.themeId) || themes[0];
     if (!theme) {
-      return NextResponse.json(
-        { error: 'Invalid theme' },
-        { status: 400 }
-      );
+      // Return success without narration if no themes available
+      return NextResponse.json({
+        success: true,
+        narration: null,
+        message: 'No theme available for narration generation',
+      });
     }
 
     // Prepare photo data for narration generation
