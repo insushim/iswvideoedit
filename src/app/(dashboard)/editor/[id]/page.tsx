@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { EditorLayout } from '@/components/layout';
-import { Timeline, VideoPreview } from '@/components/editor';
+import { Timeline, VideoPreview, VideoExporter } from '@/components/editor';
 import { Button, Card } from '@/components/common';
 import {
   Layers,
@@ -64,6 +64,7 @@ export default function EditorPage() {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | undefined>();
+  const [showExporter, setShowExporter] = useState(false);
 
   // Calculate timeline data
   const fps = project?.settings?.fps || 30;
@@ -165,27 +166,8 @@ export default function EditorPage() {
     }
   };
 
-  const handleExport = async () => {
-    try {
-      const response = await fetch('/api/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          projectId,
-          settings: {
-            resolution: project?.settings?.resolution || '1080p',
-          },
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        router.push(`/render/${data.jobId}`);
-      }
-    } catch (error) {
-      console.error('Failed to start render:', error);
-    }
+  const handleExport = () => {
+    setShowExporter(true);
   };
 
   const handlePreview = () => {
@@ -461,6 +443,20 @@ export default function EditorPage() {
           )}
         </div>
       </div>
+
+      {/* Video Exporter Modal */}
+      {project && (
+        <VideoExporter
+          project={{
+            id: project.id,
+            name: project.name,
+            photos: project.photos,
+            settings: project.settings,
+          }}
+          isOpen={showExporter}
+          onClose={() => setShowExporter(false)}
+        />
+      )}
     </EditorLayout>
   );
 }
