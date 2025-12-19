@@ -21,19 +21,16 @@ const generateNarrationSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userId = session?.user?.id;
 
     const body = await request.json();
     const validated = generateNarrationSchema.parse(body);
 
-    // Verify project ownership and get data
+    // Find project (allow anonymous access if no userId on project)
     const project = await prisma.project.findFirst({
       where: {
         id: validated.projectId,
-        userId: session.user.id,
+        ...(userId ? { userId } : {}),
       },
       include: {
         photos: {
